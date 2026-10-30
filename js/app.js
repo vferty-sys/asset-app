@@ -3,7 +3,7 @@
 import { APP_NAME, STORAGE_KEYS } from './constants.js';
 import { pickStorageBackend } from './storage.js';
 import { initState, reloadState, getState, updateState, subscribe } from './state.js';
-import { el, clear, showToast } from './dom.js';
+import { el, clear, closeAllModals, showToast } from './dom.js';
 import * as dashboard from './ui/dashboard.js';
 import * as holdings from './ui/holdings.js';
 import * as analysis from './ui/analysis.js';
@@ -44,6 +44,7 @@ function currentViewId() {
 }
 
 function renderView(viewId) {
+  closeAllModals();
   cleanupView?.();
   cleanupView = null;
 

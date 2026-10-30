@@ -25,6 +25,12 @@ test('coerceValue number: 범위와 정수 검사', () => {
   assert.equal(coerceValue(spec, '').ok, false);
   assert.match(coerceValue(spec, '101').error, /0 ~ 100/);
 
+  const positive = { type: 'number', exclusiveMin: 0 };
+  assert.equal(coerceValue(positive, '0').ok, false);
+  assert.match(coerceValue(positive, '0').error, /0보다 큰/);
+  assert.deepEqual(coerceValue(positive, '0.01'), { ok: true, value: 0.01 });
+  assert.equal(coerceValue({ type: 'enum', options: ['a'] }, '').error, '목록에서 골라 주세요.');
+
   const integer = { type: 'integer', min: 1900, max: 2100 };
   assert.deepEqual(coerceValue(integer, '1980'), { ok: true, value: 1980 });
   assert.equal(coerceValue(integer, '1980.5').ok, false);

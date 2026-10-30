@@ -2,8 +2,9 @@
 
 import { SETTINGS_SCHEMA } from '../constants.js';
 import { coerceValue } from '../validate.js';
-import { el, uid, helpTip, showToast } from '../dom.js';
+import { el, helpTip, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
+import { createField, createToggleField, selectInput, textInput } from './form.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}월`]);
 
@@ -126,7 +127,7 @@ const SECTIONS = [
       },
       {
         key: 'allowFractionalUS', label: '미국 주식 소수점 매매', kind: 'toggle',
-        hint: '켜면 리밸런싱 계산에서 미국 주식을 0.5주처럼 소수점 단위로 계산해요.',
+        hint: '켜면 미국 주식 수량을 0.5주처럼 소수점으로 입력할 수 있고, 리밸런싱도 소수점 단위로 계산해요.',
       },
     ],
   },
@@ -145,31 +146,20 @@ function inputMode(field) {
   return field.integer || field.money ? 'numeric' : 'decimal';
 }
 
-function createControl(field, value, id, describedBy) {
-  const common = { id, 'aria-describedby': describedBy };
+function createControl(field, value) {
   switch (field.kind) {
     case 'select':
-      return el('select', { ...common, class: 'input', value: String(value) },
-        field.options.map(([optionValue, label]) => el('option', { value: String(optionValue), text: label })));
-    case 'toggle':
-      return el('input', { ...common, type: 'checkbox', role: 'switch', class: 'switch-input', checked: value });
+      return selectInput(field.options, String(value));
     case 'month':
-      return el('input', { ...common, type: 'month', class: 'input', placeholder: '2044-06', value: value ?? '' });
-    case 'text':
-      return el('input', {
-        ...common, type: field.inputType ?? 'text', class: 'input', placeholder: field.placeholder,
-        autocomplete: 'off', spellcheck: 'false', value: value ?? '',
-      });
+      return el('input', { type: 'month', class: 'input', placeholder: '2044-06', value: value ?? '' });
+    case 'text': {
+      const input = textInput({ type: field.inputType ?? 'text', placeholder: field.placeholder, value: value ?? '' });
+      input.spellcheck = false;
+      return input;
+    }
     default:
-      return el('input', {
-        ...common, type: 'text', class: 'input', inputmode: inputMode(field),
-        placeholder: field.placeholder, autocomplete: 'off', value: displayValue(field, value),
-      });
+      return textInput({ inputmode: inputMode(field), placeholder: field.placeholder, value: displayValue(field, value) });
   }
-}
-
-function controlValue(field, control) {
-  return field.kind === 'toggle' ? control.checked : control.value;
 }
 
 export function render(root, { getState, updateState }) {
@@ -179,54 +169,33 @@ export function render(root, { getState, updateState }) {
     hintUpdaters.forEach((update) => update(settings));
   };
 
-  function renderField(field, { compact = false } = {}) {
-    const id = uid('setting');
-    const errorNode = el('p', { class: 'field-error', id: `${id}-error`, role: 'alert', hidden: true });
-    const hintNode = field.hint || field.dynamicHint
-      ? el('p', { class: 'field-hint', id: `${id}-hint`, text: field.hint ?? '' })
-      : null;
-    if (field.dynamicHint) hintUpdaters.push((settings) => { hintNode.textContent = field.dynamicHint(settings); });
-
-    const describedBy = [hintNode && hintNode.id, errorNode.id].filter(Boolean).join(' ');
-    const control = createControl(field, getState().settings[field.key], id, describedBy);
-    const wrapper = el('div', { class: `field${compact ? ' field-compact' : ''}` });
-
-    const setError = (message) => {
-      wrapper.classList.toggle('is-invalid', Boolean(message));
-      control.setAttribute('aria-invalid', message ? 'true' : 'false');
-      errorNode.textContent = message ?? '';
-      errorNode.hidden = !message;
-    };
-
-    control.addEventListener('change', () => {
-      const result = coerceValue(SETTINGS_SCHEMA[field.key], controlValue(field, control));
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setError(null);
-      if (field.kind === 'number') control.value = displayValue(field, result.value);
-      if (Object.is(getState().settings[field.key], result.value)) return;
-      updateState((draft) => { draft.settings[field.key] = result.value; });
-      refreshHints();
-      showToast('저장했어요');
-    });
-
-    const label = el('label', { for: id, class: 'field-label', text: field.label });
-    const labelRow = el('div', { class: 'field-label-row' }, label, field.help ? helpTip(field.label, field.help) : null);
-
-    if (field.kind === 'toggle') {
-      wrapper.classList.add('field-toggle');
-      wrapper.append(el('div', { class: 'toggle-row' }, labelRow, el('span', { class: 'switch' }, control, el('span', { class: 'switch-track', 'aria-hidden': 'true' }))));
-    } else {
-      const controlRow = field.suffix
-        ? el('div', { class: 'input-affix' }, control, el('span', { class: 'input-suffix', 'aria-hidden': 'true', text: field.suffix }))
-        : control;
-      wrapper.append(labelRow, controlRow);
+  // 검증을 통과하면 바로 저장한다. view가 없으면(스위치) 오류 표시를 하지 않는다.
+  function commit(field, rawValue, view) {
+    const result = coerceValue(SETTINGS_SCHEMA[field.key], rawValue);
+    if (!result.ok) {
+      view?.setError(result.error);
+      return;
     }
-    if (hintNode) wrapper.append(hintNode);
-    wrapper.append(errorNode);
-    return wrapper;
+    view?.setError(null);
+    if (field.kind === 'number') view.control.value = displayValue(field, result.value);
+    if (Object.is(getState().settings[field.key], result.value)) return;
+    updateState((draft) => { draft.settings[field.key] = result.value; });
+    refreshHints();
+    showToast('저장했어요');
+  }
+
+  function renderField(field, { compact = false } = {}) {
+    const value = getState().settings[field.key];
+    if (field.kind === 'toggle') {
+      const { element, control } = createToggleField({ label: field.label, help: field.help, hint: field.hint, checked: value });
+      control.addEventListener('change', () => commit(field, control.checked, null));
+      return element;
+    }
+    const control = createControl(field, value);
+    const view = createField({ label: field.label, help: field.help, hint: field.hint, control, suffix: field.suffix, compact });
+    if (field.dynamicHint) hintUpdaters.push((settings) => view.setHint(field.dynamicHint(settings)));
+    control.addEventListener('change', () => commit(field, control.value, view));
+    return view.element;
   }
 
   function renderGroup(group) {

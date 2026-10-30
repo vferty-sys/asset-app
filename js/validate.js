@@ -41,7 +41,7 @@ export function coerceValue(spec, input) {
   if (isEmpty) {
     if (spec.type === 'string' || spec.type === 'url') return ok('');
     if (spec.nullable) return ok(null);
-    return fail('값을 입력해 주세요.');
+    return fail(spec.type === 'enum' ? '목록에서 골라 주세요.' : '값을 입력해 주세요.');
   }
 
   switch (spec.type) {
@@ -50,6 +50,7 @@ export function coerceValue(spec, input) {
       const n = parseNumberInput(input);
       if (!Number.isFinite(n)) return fail('숫자로 입력해 주세요.');
       if (spec.type === 'integer' && !Number.isInteger(n)) return fail('소수점 없이 입력해 주세요.');
+      if (spec.exclusiveMin != null && n <= spec.exclusiveMin) return fail(`${plain(spec.exclusiveMin)}보다 큰 값으로 입력해 주세요.`);
       if ((spec.min != null && n < spec.min) || (spec.max != null && n > spec.max)) return fail(rangeMessage(spec));
       return ok(n);
     }

@@ -68,6 +68,79 @@ export function showToast(message, tone = 'info', duration = 2200) {
   }, duration);
 }
 
+// ── 모달 ───────────────────────────────────────────────
+let scrollLocks = 0;
+
+function lockScroll() {
+  scrollLocks += 1;
+  document.documentElement.classList.add('modal-open');
+}
+
+function unlockScroll() {
+  scrollLocks = Math.max(0, scrollLocks - 1);
+  if (scrollLocks === 0) document.documentElement.classList.remove('modal-open');
+}
+
+export function closeIcon() {
+  return svg('svg', { class: 'icon', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, svg('path', { d: 'M6 6l12 12M18 6L6 18' }));
+}
+
+// 화면 위에 뜨는 창. 모바일에서는 아래에서 올라오는 시트 모양이다.
+// size: 'md'(입력 양식) | 'sm'(확인 창)
+export function openModal({ title, body, footer, size = 'md', onClose }) {
+  const titleId = uid('modal-title');
+  const heading = el('h2', { id: titleId, class: 'modal-title', tabindex: '-1', text: title });
+  const closeButton = el('button', { type: 'button', class: 'icon-btn modal-close', 'aria-label': '닫기' }, closeIcon());
+  const dialog = el('dialog', { class: `modal modal-${size}`, 'aria-labelledby': titleId },
+    el('div', { class: 'modal-head' }, heading, closeButton),
+    el('div', { class: 'modal-body' }, body),
+    footer ? el('div', { class: 'modal-foot' }, footer) : null);
+
+  const close = () => {
+    if (dialog.open) dialog.close();
+  };
+  closeButton.addEventListener('click', close);
+  dialog.addEventListener('close', () => {
+    dialog.remove();
+    unlockScroll();
+    onClose?.();
+  });
+
+  document.body.append(dialog);
+  dialog.showModal();
+  lockScroll();
+  // 입력 칸에 바로 초점을 주면 휴대폰 키보드가 튀어나오므로 제목에 초점을 둔다.
+  heading.focus();
+  return { dialog, close };
+}
+
+export function closeAllModals() {
+  document.querySelectorAll('dialog.modal[open]').forEach((dialog) => dialog.close());
+}
+
+// 확인 창. 확인을 누르면 true, 그 밖에는 false로 끝나는 Promise.
+export function confirmDialog({ title, message, confirmText = '확인', cancelText = '취소', danger = false }) {
+  return new Promise((resolve) => {
+    let confirmed = false;
+    const cancelButton = el('button', { type: 'button', class: 'btn', text: cancelText });
+    const confirmButton = el('button', {
+      type: 'button', class: `btn ${danger ? 'btn-danger-solid' : 'btn-primary'}`, text: confirmText,
+    });
+    const { close } = openModal({
+      title,
+      size: 'sm',
+      body: el('p', { class: 'confirm-message', text: message }),
+      footer: [cancelButton, confirmButton],
+      onClose: () => resolve(confirmed),
+    });
+    cancelButton.addEventListener('click', close);
+    confirmButton.addEventListener('click', () => {
+      confirmed = true;
+      close();
+    });
+  });
+}
+
 // ── (?) 용어 도움말 ─────────────────────────────────────
 let openTip = null;
 
@@ -111,10 +184,12 @@ function setupTipListeners() {
   window.addEventListener('hashchange', closeTip);
 }
 
+// text가 배열이면 한 줄씩 나눠 보여준다.
 export function helpTip(term, text) {
   setupTipListeners();
+  const lines = Array.isArray(text) ? text : [text];
   const pop = el('span', { class: 'help-pop', role: 'tooltip', id: uid('tip'), hidden: true },
-    el('strong', { text: term }), el('span', { text }));
+    el('strong', { text: term }), lines.map((line) => el('span', { text: line })));
   const button = el('button', {
     type: 'button',
     class: 'help',

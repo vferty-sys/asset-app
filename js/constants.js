@@ -13,6 +13,15 @@ export const STORAGE_KEYS = Object.freeze({
 export const ACCOUNTS = Object.freeze(['일반', 'ISA', '연금저축', 'IRP', '기타']);
 export const ASSET_CLASSES = Object.freeze(['성장주', '배당주', '채권', '현금성', '기타']);
 export const CURRENCIES = Object.freeze(['KRW', 'USD']);
+export const HOLDING_TYPES = Object.freeze(['stock', 'etf']);
+export const HOLDING_TYPE_LABELS = Object.freeze({ stock: '개별 주식', etf: 'ETF' });
+
+// 국가·섹터 선택지. CSV나 백업으로 들어온 다른 이름도 그대로 쓸 수 있다.
+export const COUNTRY_OPTIONS = Object.freeze(['한국', '미국', '중국', '일본', '유럽', '신흥국', '기타']);
+export const SECTOR_OPTIONS = Object.freeze([
+  '기술', '통신', '소비재', '필수소비재', '헬스케어', '금융', '산업재',
+  '에너지', '소재', '유틸리티', '부동산', '채권', '현금성', '기타',
+]);
 export const OTHER_ASSET_TYPES = Object.freeze(['공제회', '예금', '적금', '기타']);
 export const COMPOUNDING_TYPES = Object.freeze(['월복리', '연복리', '단리']);
 export const PENSION_CATEGORIES = Object.freeze([

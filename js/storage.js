@@ -5,6 +5,7 @@ import {
   STORAGE_KEYS, STORAGE_PREFIX, SETTINGS_SCHEMA, META_SCHEMA, TARGET_MODES,
 } from './constants.js';
 import { isPlainObject, sanitizeObject } from './validate.js';
+import { normalizeHolding } from './holding.js';
 
 // 데이터 구조를 바꿀 때마다 1씩 올리고 MIGRATIONS에 변환 함수를 추가한다.
 export const SCHEMA_VERSION = 1;
@@ -88,7 +89,7 @@ export function normalizeData(raw) {
   const source = isPlainObject(raw) ? raw : {};
   return {
     schemaVersion: SCHEMA_VERSION,
-    holdings: objectList(source.holdings),
+    holdings: objectList(source.holdings).map(normalizeHolding),
     otherAssets: objectList(source.otherAssets),
     pensions: objectList(source.pensions),
     targets: normalizeTargets(source.targets),

@@ -5,6 +5,7 @@ import {
   SCHEMA_VERSION, DataError, createDefaultData, migrate, normalizeData, loadData, saveData,
   createBackup, parseBackup, clearAppData, createMemoryBackend,
 } from '../js/storage.js';
+import { normalizeHolding } from '../js/holding.js';
 
 const NOW = new Date('2026-10-30T01:00:00Z');
 const KEY = STORAGE_KEYS.data;
@@ -29,7 +30,7 @@ test('저장 → 다시 읽기 하면 같은 데이터가 나온다', () => {
   const backend = createMemoryBackend();
   const data = createDefaultData(NOW);
   data.settings.theme = 'dark';
-  data.holdings.push({ id: 'h1', name: '테스트 종목', quantity: 3 });
+  data.holdings.push(normalizeHolding({ id: 'h1', name: '테스트 종목', ticker: 'KRX:005930', quantity: 3 }));
   saveData(backend, data);
 
   const result = loadData(backend, { now: NOW });
@@ -63,7 +64,9 @@ test('schemaVersion이 없는 예전 데이터는 변환하고, 변환 전 원�
   assert.equal(result.status, 'migrated');
   assert.equal(result.fromVersion, 0);
   assert.equal(result.data.schemaVersion, SCHEMA_VERSION);
-  assert.deepEqual(result.data.holdings, legacy.holdings);
+  assert.equal(result.data.holdings.length, 1);
+  assert.equal(result.data.holdings[0].id, 'a');
+  assert.equal(result.data.holdings[0].name, '삼성전자');
   assert.equal(result.data.settings.inflationRate, 3);
   assert.equal(result.data.settings.lifeExpectancy, 90);
   assert.equal(backend.getItem(result.backupKey), raw);
@@ -110,7 +113,7 @@ test('normalizeData: 빠진 항목은 기본값, 잘못된 값은 정리', () =>
     targets: { mode: 'weird', assetClass: { 성장주: 60, 채권: -5, 배당주: 'x' } },
     settings: { theme: 'neon', warnSector: 35, unknownKey: true },
   });
-  assert.deepEqual(data.holdings, [{ id: 'a' }]);
+  assert.deepEqual(data.holdings, [normalizeHolding({ id: 'a' })]);
   assert.deepEqual(data.otherAssets, []);
   assert.deepEqual(data.targets, { mode: 'assetClass', assetClass: { 성장주: 60 }, ticker: {} });
   assert.equal(data.settings.theme, 'system');
