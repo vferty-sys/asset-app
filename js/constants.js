@@ -112,6 +112,16 @@ export const SCORE_RULES = Object.freeze({
   countrySector: { pointsEach: 10 },
 });
 
+// ── 리밸런싱 세금 추정 (요청서 6-5) — 제도가 바뀌면 여기만 고친다 ──
+// 수수료율·국내 매도 거래세율은 사용자가 설정 화면에서 바꾼다.
+export const TAX_RULES = Object.freeze({
+  overseasCapitalGainsRate: 0.22, // 해외주식 양도소득세 20% + 지방소득세 2%
+  overseasBasicDeduction: 2_500_000, // 해외주식 양도소득 기본공제 (연 250만원, 한 해 손익을 합친 뒤 공제)
+});
+
+// 미국 주식 소수점 매매를 켰을 때 수량 단위
+export const FRACTIONAL_STEP = 0.0001;
+
 export const SCORE_GRADES = Object.freeze([
   { min: 80, label: '튼튼해요', tone: 'ok' },
   { min: 60, label: '괜찮아요', tone: 'info' },

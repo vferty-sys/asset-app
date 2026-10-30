@@ -36,7 +36,7 @@ js/price.js         구글 시트 시세 받기, 응답 검사, 마지막 시세
 js/market.js        시세 상태(마지막 시세, 받아오는 중인지)와 화면 알림
 js/markdown.js      가이드 문서(.md)를 앱 안에서 보여주는 작은 파서
 js/charts.js        도넛 차트 (Chart.js를 CDN에서 필요할 때만, 무결성 검사 후 불러옴)
-js/calc/            순수 계산 함수 (평가금액, 분산 집계, 건강도 점수, CSV 붙여넣기 …)
+js/calc/            순수 계산 함수 (평가금액, 분산 집계, 건강도 점수, 리밸런싱, 세금·수수료 추정, CSV 붙여넣기 …)
 js/validate.js      입력값 검증
 js/format.js        금액·비율·날짜 표시
 js/constants.js     기본 설정값과 기준값

@@ -325,6 +325,291 @@
   text-align: right;
 }
 
+/* ── 리밸런싱 ─────────────────────────── */
+.targets-card,
+.method-card,
+.result-card,
+.costs-card {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+
+.targets-card .segmented,
+.method-card .segmented {
+  max-width: 420px;
+}
+
+.target-rows {
+  display: grid;
+  gap: 12px;
+}
+
+@media (min-width: 640px) {
+  .target-rows {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px 18px;
+  }
+}
+
+.target-field .field-hint {
+  margin-top: 4px;
+}
+
+.bullet-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-fill,
+.legend-band {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--series-1);
+}
+
+.legend-band {
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+}
+
+.legend-target {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--text);
+}
+
+.bullet-list {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bullet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.bullet-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.bullet-values {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.bullet-track {
+  position: relative;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.bullet-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  opacity: 0.55;
+}
+
+.bullet-fill {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: 999px;
+  background: var(--series-1);
+}
+
+.bullet-target {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--text);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+
+.check-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.additional-box {
+  display: grid;
+  gap: 10px;
+}
+
+.method-card .btn-primary {
+  min-width: 140px;
+}
+
+.results {
+  position: relative;
+  display: grid;
+  gap: 16px;
+  scroll-margin-top: calc(var(--header-h) + 12px);
+}
+
+/* 조건이 바뀐 예전 결과: 자리는 그대로 두고 흐리게 */
+.results.is-stale > :not(.stale-note) {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.stale-note {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  z-index: 2;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 24px);
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: center;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.2);
+}
+
+.result-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.result-head .section-title {
+  margin-bottom: 0;
+}
+
+.result-table-wrap {
+  display: none;
+}
+
+.result-table .is-hold td {
+  color: var(--text-muted);
+}
+
+.result-cards {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.result-item {
+  display: grid;
+  gap: 2px;
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.result-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.result-item-trade {
+  font-weight: 600;
+}
+
+.result-item.is-hold .cell-name {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+@media (min-width: 1024px) {
+  .result-table-wrap {
+    display: block;
+  }
+
+  .result-cards {
+    display: none;
+  }
+}
+
+.leftover {
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-weight: 600;
+}
+
+.leftover .muted {
+  font-weight: 400;
+}
+
+.cost-list {
+  display: grid;
+  margin: 0;
+}
+
+.cost-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+
+.cost-row dt {
+  display: grid;
+  gap: 2px;
+}
+
+.cost-note {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.cost-row dd {
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.cost-notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.1em;
+}
+
 /* ── 설정: 연결 테스트 ───────────────────── */
 .connection-tools {
   display: grid;
