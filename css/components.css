@@ -1,0 +1,450 @@
+/* 카드, 버튼, 입력 칸, 배지, 도움말, 토스트 */
+
+.card {
+  min-width: 0;
+  padding: 18px var(--gutter);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+@media (min-width: 768px) {
+  .card {
+    padding: 22px 24px;
+  }
+}
+
+.section-title {
+  margin-bottom: 4px;
+}
+
+.section-desc,
+.page-lead {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.section-desc {
+  margin-bottom: 4px;
+}
+
+/* ── 버튼 ───────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:hover {
+  background: var(--surface-2);
+}
+
+.btn-primary {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: var(--on-primary);
+}
+
+.btn-primary:hover {
+  border-color: var(--primary-strong);
+  background: var(--primary-strong);
+}
+
+.btn-danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── 입력 칸 ─────────────────────────── */
+.field {
+  min-width: 0;
+  margin: 0;
+  padding: 14px 0 0;
+  border: 0;
+}
+
+.field + .field {
+  border-top: 1px solid var(--border);
+  margin-top: 14px;
+}
+
+.field-compact + .field-compact {
+  border-top: 0;
+  margin-top: 0;
+}
+
+.field-label-row,
+.field-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.field-legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+}
+
+.field-legend + * {
+  clear: both;
+}
+
+.field-label {
+  font-weight: 600;
+  font-size: 0.9375rem;
+}
+
+.field-compact .field-label {
+  font-weight: 500;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.field-compact .field-label-row {
+  margin-bottom: 4px;
+}
+
+.input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  /* iOS에서 16px보다 작으면 입력할 때 화면이 확대된다 */
+  font-size: 16px;
+}
+
+select.input {
+  appearance: none;
+  padding-right: 36px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--text-muted) 50%),
+    linear-gradient(135deg, var(--text-muted) 50%, transparent 50%);
+  background-position: calc(100% - 19px) 21px, calc(100% - 14px) 21px;
+  background-size: 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.input:focus {
+  border-color: var(--primary);
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.input-affix {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-affix .input {
+  padding-right: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.input-suffix {
+  position: absolute;
+  right: 12px;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+.field-hint {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.field-error {
+  margin-top: 6px;
+  color: var(--danger);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.field.is-invalid .input {
+  border-color: var(--danger);
+}
+
+.field-group-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.field-group-row .field {
+  padding-top: 0;
+}
+
+.field-group-row .input-affix .input {
+  padding-right: 30px;
+  padding-left: 8px;
+}
+
+.field-group-row .input-suffix {
+  right: 10px;
+}
+
+/* ── 스위치 ─────────────────────────── */
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.toggle-row .field-label-row {
+  margin-bottom: 0;
+}
+
+.switch {
+  position: relative;
+  flex-shrink: 0;
+  width: 52px;
+  height: 32px;
+}
+
+.switch-input {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.switch-track {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--border-strong);
+  transition: background 0.2s;
+}
+
+.switch-track::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.25);
+  transition: transform 0.2s;
+}
+
+.switch-input:checked + .switch-track {
+  background: var(--primary);
+}
+
+.switch-input:checked + .switch-track::after {
+  transform: translateX(20px);
+}
+
+.switch-input:focus-visible + .switch-track {
+  box-shadow: var(--focus);
+}
+
+/* ── 배지·배너 ───────────────────────── */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.badge-warn {
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
+.badge-danger {
+  background: var(--danger-weak);
+  color: var(--danger);
+}
+
+.badge-ok {
+  background: var(--ok-weak);
+  color: var(--ok);
+}
+
+.banner {
+  padding: 12px 14px;
+  border-radius: 12px;
+  font-size: 0.9375rem;
+}
+
+.banner-warn {
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
+.banner-danger {
+  background: var(--danger-weak);
+  color: var(--danger);
+}
+
+/* ── (?) 도움말 ───────────────────────── */
+.help-wrap {
+  display: inline-flex;
+}
+
+.help {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 손가락으로 누르기 쉽도록 실제 터치 영역은 더 넓게 */
+.help::before {
+  content: "";
+  position: absolute;
+  inset: -11px;
+}
+
+.help[aria-expanded="true"] {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.help-pop {
+  position: fixed;
+  z-index: 50;
+  display: grid;
+  gap: 4px;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 16px));
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 8px 24px rgb(16 24 40 / 0.18);
+  font-size: 0.875rem;
+  font-weight: 400;
+  line-height: 1.5;
+  text-align: left;
+}
+
+/* ── 토스트 ─────────────────────────── */
+.toast-root {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  z-index: 60;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 32px);
+  pointer-events: none;
+}
+
+.toast {
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.2);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.2s, transform 0.2s;
+}
+
+.toast.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.toast-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+@media (min-width: 768px) {
+  .toast-root {
+    bottom: 24px;
+  }
+}
+
+/* ── 준비 중 화면 ─────────────────────── */
+.placeholder {
+  display: grid;
+  gap: 12px;
+}
+
+.placeholder-summary {
+  font-weight: 600;
+}
+
+.placeholder-list {
+  margin: 0;
+  padding-left: 1.2em;
+  color: var(--text-muted);
+}
+
+.settings-section {
+  display: block;
+}
+
+/* PC에서 입력칸이 너무 길어지지 않게 */
+@media (min-width: 768px) {
+  .settings-section .field > .input,
+  .settings-section .input-affix,
+  .settings-section .field-group-row,
+  .settings-section .toggle-row {
+    max-width: 480px;
+  }
+}
+
+.noscript {
+  padding: 24px;
+  text-align: center;
+}

@@ -1,0 +1,84 @@
+// 화면 표시용 포맷 함수. 값이 없거나 숫자가 아니면 '–'를 돌려준다.
+
+export const EMPTY = '–';
+
+const MAN = 1e4;
+const EOK = 1e8;
+
+function isNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export function formatNumber(value, { maximumFractionDigits = 0, minimumFractionDigits = 0 } = {}) {
+  if (!isNumber(value)) return EMPTY;
+  return value.toLocaleString('ko-KR', { maximumFractionDigits, minimumFractionDigits });
+}
+
+function signOf(value, signed) {
+  if (value < 0) return '-';
+  return signed && value > 0 ? '+' : '';
+}
+
+// 원화 금액. unit: 'auto'(만원·억원 자동) | 'won'(원 단위) | 'man'(만원 단위)
+// 예) auto: 9,500원 / 2,346만원 / 1억 2,346만원 / 3억원
+export function formatMoney(value, { unit = 'auto', signed = false } = {}) {
+  if (!isNumber(value)) return EMPTY;
+  const won = Math.round(Math.abs(value));
+  const sign = won === 0 ? '' : signOf(value, signed);
+
+  if (unit === 'won' || won < MAN) return `${sign}${formatNumber(won)}원`;
+
+  const man = Math.round(won / MAN);
+  if (unit === 'man' || man < MAN) return `${sign}${formatNumber(man)}만원`;
+
+  const eok = Math.floor(man / MAN);
+  const restMan = man % MAN;
+  return restMan === 0
+    ? `${sign}${formatNumber(eok)}억원`
+    : `${sign}${formatNumber(eok)}억 ${formatNumber(restMan)}만원`;
+}
+
+// 종목 가격. 원화는 정수, 달러는 소수 둘째 자리까지.
+export function formatPrice(value, currency) {
+  if (!isNumber(value)) return EMPTY;
+  if (currency === 'USD') {
+    const text = formatNumber(Math.abs(value), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return `${value < 0 ? '-' : ''}$${text}`;
+  }
+  return `${formatNumber(Math.round(value))}원`;
+}
+
+// 비율(0~1)을 퍼센트 문자열로. 예) 0.523 → '52.3%'
+export function formatPercent(ratio, { digits = 1, signed = false } = {}) {
+  if (!isNumber(ratio)) return EMPTY;
+  const percent = ratio * 100;
+  const text = formatNumber(Math.abs(percent), { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const isZero = Number(text.replace(/,/g, '')) === 0;
+  return `${isZero ? '' : signOf(percent, signed)}${text}%`;
+}
+
+// 'YYYY-MM-DD' 문자열이나 Date → '2026.10.30'
+export function formatDate(value) {
+  if (typeof value === 'string') {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    return match ? `${match[1]}.${match[2]}.${match[3]}` : EMPTY;
+  }
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const mm = String(value.getMonth() + 1).padStart(2, '0');
+    const dd = String(value.getDate()).padStart(2, '0');
+    return `${value.getFullYear()}.${mm}.${dd}`;
+  }
+  return EMPTY;
+}
+
+// 'YYYY-MM' → '2044년 6월'
+export function formatYearMonth(value) {
+  const match = typeof value === 'string' ? /^(\d{4})-(\d{2})$/.exec(value) : null;
+  return match ? `${match[1]}년 ${Number(match[2])}월` : EMPTY;
+}
+
+// 손익 색상용 CSS 클래스. 실제 색은 CSS 변수(--gain, --loss)가 정한다.
+export function pnlClass(value) {
+  if (!isNumber(value) || value === 0) return 'is-flat';
+  return value > 0 ? 'is-gain' : 'is-loss';
+}

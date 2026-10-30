@@ -1,0 +1,209 @@
+/* 색상 토큰, 기본 스타일, 글꼴 */
+
+:root {
+  color-scheme: light;
+  --bg: #f3f5f9;
+  --surface: #ffffff;
+  --surface-2: #eef2f7;
+  --border: #dce2ea;
+  --border-strong: #c3ccd8;
+  --text: #17202c;
+  --text-muted: #5b6676;
+  --primary: #2f6bf0;
+  --primary-strong: #1f56d1;
+  --primary-weak: #e5edff;
+  --on-primary: #ffffff;
+  --red: #e0353b;
+  --blue: #1f6fd6;
+  --warn: #b26a00;
+  --warn-weak: #fff3dc;
+  --danger: #d1343a;
+  --danger-weak: #fde8e8;
+  --ok: #18884c;
+  --ok-weak: #e1f5e9;
+  --gain: var(--red);
+  --loss: var(--blue);
+  --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 2px 6px rgb(16 24 40 / 0.05);
+  --focus: 0 0 0 3px rgb(47 107 240 / 0.35);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --header-h: 56px;
+  --tabbar-h: 62px;
+  --gutter: 16px;
+  --font: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic",
+    "Noto Sans KR", system-ui, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0f141b;
+    --surface: #171e27;
+    --surface-2: #1f2832;
+    --border: #2b3542;
+    --border-strong: #3d4958;
+    --text: #e7ecf3;
+    --text-muted: #9aa6b6;
+    --primary: #6a96ff;
+    --primary-strong: #8badff;
+    --primary-weak: #1e2b47;
+    --on-primary: #0b1220;
+    --red: #ff6b6f;
+    --blue: #5aaeff;
+    --warn: #ffc067;
+    --warn-weak: #3a2c12;
+    --danger: #ff7b7f;
+    --danger-weak: #3d1d20;
+    --ok: #4fd18b;
+    --ok-weak: #15301f;
+    --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+    --focus: 0 0 0 3px rgb(106 150 255 / 0.45);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f141b;
+  --surface: #171e27;
+  --surface-2: #1f2832;
+  --border: #2b3542;
+  --border-strong: #3d4958;
+  --text: #e7ecf3;
+  --text-muted: #9aa6b6;
+  --primary: #6a96ff;
+  --primary-strong: #8badff;
+  --primary-weak: #1e2b47;
+  --on-primary: #0b1220;
+  --red: #ff6b6f;
+  --blue: #5aaeff;
+  --warn: #ffc067;
+  --warn-weak: #3a2c12;
+  --danger: #ff7b7f;
+  --danger-weak: #3d1d20;
+  --ok: #4fd18b;
+  --ok-weak: #15301f;
+  --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
+  --focus: 0 0 0 3px rgb(106 150 255 / 0.45);
+}
+
+/* 설정에서 손익 색상을 반대로 바꾼 경우 */
+:root[data-pnl="inverted"] {
+  --gain: var(--blue);
+  --loss: var(--red);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.55;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 1.375rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+h2 {
+  font-size: 1.0625rem;
+  line-height: 1.4;
+}
+
+a {
+  color: var(--primary);
+}
+
+svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.small {
+  font-size: 0.875rem;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+.is-gain {
+  color: var(--gain);
+}
+
+.is-loss {
+  color: var(--loss);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (min-width: 768px) {
+  h1 {
+    font-size: 1.625rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}

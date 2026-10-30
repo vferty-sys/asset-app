@@ -1,0 +1,247 @@
+/* 앱 골격: 모바일은 상단 헤더 + 하단 탭 바, PC(768px 이상)는 왼쪽 메뉴 */
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 100;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--primary);
+  color: var(--on-primary);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 8px;
+}
+
+.app {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* ── 헤더 ───────────────────────────── */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: calc(var(--header-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) var(--gutter) 0;
+  background: var(--bg);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 700;
+  font-size: 1.0625rem;
+  letter-spacing: -0.01em;
+}
+
+.brand-mark {
+  width: 28px;
+  height: 28px;
+  color: var(--primary);
+}
+
+.brand-name {
+  white-space: nowrap;
+}
+
+.header-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.header-settings {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  border-radius: 12px;
+  color: var(--text-muted);
+}
+
+.header-settings[aria-current="page"] {
+  color: var(--primary);
+}
+
+.header-settings svg,
+.tabbar svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ── 하단 탭 바 (모바일) ─────────────────── */
+.tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 30;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  height: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
+  padding-bottom: env(safe-area-inset-bottom);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+}
+
+.tabbar a {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: 0.6875rem;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.tabbar a[aria-current="page"] {
+  color: var(--primary);
+  font-weight: 700;
+}
+
+/* 모바일에서는 설정을 헤더 아이콘으로 연다 */
+.tabbar a[data-tab="settings"] {
+  display: none;
+}
+
+/* ── 본문 ───────────────────────────── */
+.app-main {
+  min-width: 0;
+}
+
+.app-banner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px var(--gutter) 0;
+}
+
+.view {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px var(--gutter) 8px;
+}
+
+.view:focus {
+  outline: none;
+}
+
+.page-head {
+  margin-bottom: 16px;
+}
+
+.page-body {
+  display: grid;
+  gap: 16px;
+}
+
+.disclaimer {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 16px var(--gutter) calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 20px);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+
+/* ── PC ─────────────────────────────── */
+@media (min-width: 768px) {
+  :root {
+    --gutter: 28px;
+  }
+
+  .app {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 1fr);
+    grid-template-rows: auto 1fr;
+    grid-template-areas:
+      "header header"
+      "nav main";
+  }
+
+  .app-header {
+    grid-area: header;
+  }
+
+  .header-settings {
+    display: none;
+  }
+
+  .tabbar {
+    grid-area: nav;
+    position: sticky;
+    top: var(--header-h);
+    align-self: start;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    height: calc(100vh - var(--header-h));
+    height: calc(100dvh - var(--header-h));
+    padding: 20px 12px;
+    background: transparent;
+    border-top: 0;
+    border-right: 1px solid var(--border);
+  }
+
+  .tabbar a {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 12px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 0.9375rem;
+  }
+
+  .tabbar a:hover {
+    background: var(--surface-2);
+    color: var(--text);
+  }
+
+  .tabbar a[aria-current="page"] {
+    background: var(--primary-weak);
+    color: var(--primary);
+  }
+
+  .tabbar a[data-tab="settings"] {
+    display: flex;
+    margin-top: auto;
+  }
+
+  .app-main {
+    grid-area: main;
+  }
+
+  .view {
+    padding-top: 28px;
+  }
+
+  .disclaimer {
+    padding-bottom: 28px;
+  }
+}
