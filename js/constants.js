@@ -27,6 +27,14 @@ export const COMPOUNDING_TYPES = Object.freeze(['월복리', '연복리', '단�
 export const PENSION_CATEGORIES = Object.freeze([
   '공무원연금', '국민연금', '퇴직연금', '연금저축', 'IRP', '연금보험', '기타',
 ]);
+export const PENSION_KINDS = Object.freeze(['fixed', 'accumulating']);
+export const PENSION_KIND_LABELS = Object.freeze({ fixed: '확정 수령형', accumulating: '적립형' });
+export const PAYOUT_TYPES = Object.freeze(['종신', '기간 지정']);
+export const AMOUNT_BASES = Object.freeze(['present', 'future']);
+// 적립형 연금을 보유 종목의 계좌와 연결할 수 있는 계좌
+export const LINKABLE_ACCOUNTS = Object.freeze(['연금저축', 'IRP']);
+// 마지막 갱신일로부터 이 날짜가 지나면 '업데이트할 때가 됐어요'
+export const STALE_AFTER_DAYS = 365;
 
 // 구글 Apps Script 웹 앱 주소 (회사·학교 계정은 /a/macros/도메인/ 형식)
 export const SHEET_URL_PATTERN = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec\/?$/;

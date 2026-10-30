@@ -610,6 +610,332 @@
   padding-left: 1.1em;
 }
 
+/* ── 기타 자산 ───────────────────────── */
+.asset-section {
+  display: grid;
+  gap: 12px;
+}
+
+.asset-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-section-head .section-title {
+  margin-bottom: 0;
+}
+
+.asset-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.asset-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.asset-item:hover {
+  border-color: var(--border-strong);
+}
+
+.asset-item-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.asset-name {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-weight: 700;
+}
+
+.asset-value {
+  flex-shrink: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.asset-meta {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.pension-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.pension-row .asset-item {
+  flex: 1;
+}
+
+.order-buttons {
+  display: grid;
+  align-content: center;
+  gap: 6px;
+}
+
+.order-buttons .icon-btn {
+  width: 36px;
+  height: 36px;
+}
+
+.kind-choices {
+  display: grid;
+  gap: 10px;
+}
+
+.kind-choice {
+  display: grid;
+  gap: 4px;
+  padding: 14px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface);
+  text-align: left;
+  cursor: pointer;
+}
+
+.kind-choice:hover {
+  border-color: var(--primary);
+  background: var(--primary-weak);
+}
+
+.kind-choice span {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+.kind-badge {
+  justify-self: start;
+}
+
+/* ── 미래 예측 ───────────────────────── */
+.forecast-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forecast-controls .segmented {
+  flex: 1;
+  max-width: 320px;
+}
+
+.forecast-summary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.forecast-summary > .stat-main {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 1024px) {
+  .forecast-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.forecast-notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 12px 0 0 1.1em;
+}
+
+/* 열을 minmax(0, 1fr)로 둬서 캔버스 기본 폭(300px)이나 표가 카드를 밀어 넓히지 않게 */
+.forecast-section {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-content: start;
+}
+
+.forecast-section > .section-title {
+  margin-bottom: -6px;
+}
+
+.gap-box {
+  display: grid;
+  gap: 4px;
+}
+
+.gap-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-frame {
+  position: relative;
+  width: 100%;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.chart-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-line {
+  width: 16px;
+  height: 2px;
+  background: var(--text);
+}
+
+.legend-gap {
+  width: 14px;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--warn-weak);
+  border: 1px solid var(--warn);
+}
+
+.legend-fan {
+  display: inline-block;
+  width: 18px;
+  height: 10px;
+  vertical-align: middle;
+  border-radius: 3px;
+  background: var(--primary-weak);
+  border-top: 2px solid var(--series-1);
+}
+
+.table-details summary {
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.table-details .table-wrap {
+  margin-top: 8px;
+  max-height: 320px;
+  overflow: auto;
+}
+
+.assumption-note {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
+.pension-cards,
+.deposit-cards {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 1024px) {
+  .deposit-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.pension-card,
+.deposit-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.pension-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pension-name {
+  font-size: 1rem;
+}
+
+.pension-line {
+  font-weight: 600;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.table.key-table {
+  font-size: 0.875rem;
+}
+
+.table.key-table td,
+.table.key-table th {
+  padding: 8px 6px;
+}
+
+/* 좁은 화면에서는 '1억 2,345만원'이 두 줄로 나뉘어 표가 넘치지 않게 */
+.key-table td.num {
+  white-space: normal;
+}
+
+.key-table tbody th {
+  font-weight: 500;
+}
+
+.key-table tbody tr:last-child th {
+  border-bottom: 0;
+}
+
+.key-table .is-base th,
+.key-table .is-base td {
+  font-weight: 700;
+  color: var(--text);
+}
+
+.assumptions-card {
+  display: grid;
+  gap: 8px;
+}
+
+.assumption-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 1.1em;
+  font-size: 0.9375rem;
+}
+
 /* ── 설정: 연결 테스트 ───────────────────── */
 .connection-tools {
   display: grid;

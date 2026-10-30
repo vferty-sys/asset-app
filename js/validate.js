@@ -98,6 +98,34 @@ export function coerceValue(spec, input) {
   }
 }
 
+// 시나리오별 연 이율·수익률 { low, base, high } (%) 입력 검사.
+// 기준은 꼭 넣고, 낮음·높음을 비우면 기준과 같은 값으로 본다.
+const SCENARIO_LABELS = { low: '낮음', base: '기준', high: '높음' };
+
+export function validateScenarioRates(raw, { min = -10, max = 30 } = {}) {
+  const spec = { type: 'number', min, max };
+  const base = coerceValue(spec, raw?.base);
+  if (!base.ok) return { error: `${SCENARIO_LABELS.base}: ${base.error}` };
+  const value = { low: base.value, base: base.value, high: base.value };
+  for (const key of ['low', 'high']) {
+    const checked = coerceValue({ ...spec, nullable: true }, raw?.[key]);
+    if (!checked.ok) return { error: `${SCENARIO_LABELS[key]}: ${checked.error}` };
+    if (checked.value != null) value[key] = checked.value;
+  }
+  const ordered = value.low <= value.base && value.base <= value.high;
+  return { value, warning: ordered ? null : '낮음 ≤ 기준 ≤ 높음 순서인지 확인해 주세요.' };
+}
+
+export function normalizeScenarioRates(raw, fallback = 0) {
+  const finite = (n) => typeof n === 'number' && Number.isFinite(n);
+  const base = finite(raw?.base) ? raw.base : fallback;
+  return {
+    low: finite(raw?.low) ? raw.low : base,
+    base,
+    high: finite(raw?.high) ? raw.high : base,
+  };
+}
+
 // schema에 정의된 키만 남기고, 형식이 맞지 않는 값은 기본값으로 바꾼다.
 export function sanitizeObject(schema, raw) {
   const source = isPlainObject(raw) ? raw : {};

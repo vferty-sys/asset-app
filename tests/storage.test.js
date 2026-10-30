@@ -6,6 +6,7 @@ import {
   createBackup, parseBackup, clearAppData, createMemoryBackend,
 } from '../js/storage.js';
 import { normalizeHolding } from '../js/holding.js';
+import { normalizePension } from '../js/pension.js';
 
 const NOW = new Date('2026-10-30T01:00:00Z');
 const KEY = STORAGE_KEYS.data;
@@ -124,7 +125,7 @@ test('normalizeData: 빠진 항목은 기본값, 잘못된 값은 정리', () =>
 test('백업 → 복원 하면 같은 데이터가 나온다', () => {
   const data = createDefaultData(NOW);
   data.settings.birthYear = 1980;
-  data.pensions.push({ id: 'p1', name: '공무원연금', kind: 'fixed' });
+  data.pensions.push(normalizePension({ id: 'p1', name: '공무원연금', kind: 'fixed' }));
   const text = createBackup(data, NOW);
   assert.equal(JSON.parse(text).app, 'asset-app');
   assert.deepEqual(parseBackup(text), data);

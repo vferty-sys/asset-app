@@ -32,13 +32,16 @@ js/app.js           진입점, 탭 이동
 js/state.js         앱 데이터 메모리 사본 + 변경 알림
 js/storage.js       LocalStorage 저장, 스키마 버전 관리, 백업/복원
 js/holding.js       보유 종목 데이터 정리와 입력 검증
+js/other-asset.js   공제회·예적금 데이터 정리와 입력 검증
+js/pension.js       연금(확정 수령형·적립형) 데이터 정리와 입력 검증
 js/price.js         구글 시트 시세 받기, 응답 검사, 마지막 시세 캐시
 js/market.js        시세 상태(마지막 시세, 받아오는 중인지)와 화면 알림
 js/markdown.js      가이드 문서(.md)를 앱 안에서 보여주는 작은 파서
-js/charts.js        도넛 차트 (Chart.js를 CDN에서 필요할 때만, 무결성 검사 후 불러옴)
-js/calc/            순수 계산 함수 (평가금액, 분산 집계, 건강도 점수, 리밸런싱, 세금·수수료 추정, CSV 붙여넣기 …)
+js/charts.js        도넛·시나리오·월 소득 차트 (Chart.js를 CDN에서 필요할 때만, 무결성 검사 후 불러옴)
+js/calc/            순수 계산 함수 (평가금액, 분산 집계, 건강도 점수, 리밸런싱, 세금·수수료 추정, 미래 예측, CSV 붙여넣기 …)
 js/validate.js      입력값 검증
 js/format.js        금액·비율·날짜 표시
+js/dates.js         연·월 계산 (나이, 연금 개시 달, 기간 표시)
 js/constants.js     기본 설정값과 기준값
 js/ui/              탭별 화면
 apps-script/Code.gs 구글 시트에 붙여넣을 Apps Script 코드

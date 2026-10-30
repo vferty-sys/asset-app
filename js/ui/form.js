@@ -84,6 +84,38 @@ export function numberInput({ value = '', placeholder } = {}) {
   return input;
 }
 
+// 시나리오별 낮음·기준·높음 세 칸 (연 이율·기대 수익률)
+export function createScenarioField({ label, help, hint, values = {}, allowNegative = false }) {
+  const parts = [['low', '낮음'], ['base', '기준'], ['high', '높음']].map(([key, name]) => {
+    // iOS 숫자 키패드에는 마이너스가 없어서, 음수가 필요한 칸은 일반 키보드를 쓴다.
+    const control = textInput({ value: values[key] ?? '', inputmode: allowNegative ? null : 'decimal' });
+    return { key, view: createField({ label: name, control, suffix: '%', compact: true }) };
+  });
+  const hintNode = el('p', { class: 'field-hint', hidden: !hint, text: hint ?? '' });
+  const errorNode = el('p', { class: 'field-error', role: 'alert', hidden: true });
+  const element = el('fieldset', { class: 'field field-group' },
+    el('legend', { class: 'field-legend' }, el('span', { class: 'field-label', text: label }), help ? helpTip(label, help) : null),
+    el('div', { class: 'field-group-row' }, parts.map((part) => part.view.element)),
+    hintNode,
+    errorNode);
+  return {
+    element,
+    getValues: () => Object.fromEntries(parts.map(({ key, view }) => [key, view.control.value])),
+    setError(message) {
+      element.classList.toggle('is-invalid', Boolean(message));
+      errorNode.textContent = message ?? '';
+      errorNode.hidden = !message;
+    },
+  };
+}
+
+// 날짜('YYYY-MM-DD')·달('YYYY-MM') 입력. 달 입력을 지원하지 않는 브라우저에서는 글자 칸이 되므로 예시를 보여준다.
+export function dateInput({ value = '', month = false } = {}) {
+  return el('input', {
+    type: month ? 'month' : 'date', class: 'input', value: value ?? '', placeholder: month ? '2040-12' : '2026-10-30',
+  });
+}
+
 // 여러 개 중 하나를 고르는 버튼 묶음 (라디오)
 export function segmented({ options, value, onChange }) {
   const name = uid('segment');

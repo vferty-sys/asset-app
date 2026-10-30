@@ -38,6 +38,16 @@ export function formatMoney(value, { unit = 'auto', signed = false } = {}) {
     : `${sign}${formatNumber(eok)}억 ${formatNumber(restMan)}만원`;
 }
 
+// 그래프 축용 짧은 금액. 2,500,000 → '250만', 120,000,000 → '1.2억'
+export function formatMoneyShort(value) {
+  if (!isNumber(value)) return EMPTY;
+  const abs = Math.abs(value);
+  const sign = value < 0 ? '-' : '';
+  if (abs >= EOK) return `${sign}${formatNumber(abs / EOK, { maximumFractionDigits: 1 })}억`;
+  if (abs >= MAN) return `${sign}${formatNumber(Math.round(abs / MAN))}만`;
+  return `${sign}${formatNumber(Math.round(abs))}`;
+}
+
 // 종목 가격. 원화는 정수, 달러는 소수 둘째 자리까지.
 export function formatPrice(value, currency) {
   if (!isNumber(value)) return EMPTY;
