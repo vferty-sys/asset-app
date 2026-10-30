@@ -57,6 +57,22 @@ export function formatPercent(ratio, { digits = 1, signed = false } = {}) {
   return `${isZero ? '' : signOf(percent, signed)}${text}%`;
 }
 
+// 안내 문장용 짧은 퍼센트. 0.52 → '52%', 0.404 → '40.4%'
+export function formatPercentShort(ratio) {
+  if (!isNumber(ratio)) return EMPTY;
+  return `${Number((ratio * 100).toFixed(1)).toLocaleString('ko-KR')}%`;
+}
+
+// 앞 낱말의 받침에 맞는 조사를 고른다. josa('한국', '이', '가') → '이', josa('기술주', '이', '가') → '가'
+export function josa(word, withFinal, withoutFinal) {
+  const code = String(word ?? '').trim().slice(-1).charCodeAt(0) - 0xac00;
+  if (!(code >= 0 && code <= 11171)) return withoutFinal;
+  const final = code % 28;
+  // '으로/로'는 ㄹ 받침 뒤에서도 '로'를 쓴다 (예: 서울로)
+  if (final === 0 || (withFinal === '으로' && final === 8)) return withoutFinal;
+  return withFinal;
+}
+
 // 'YYYY-MM-DD' 문자열이나 Date → '2026.10.30'
 export function formatDate(value) {
   if (typeof value === 'string') {

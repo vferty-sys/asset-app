@@ -87,3 +87,31 @@ export const META_SCHEMA = Object.freeze({
 });
 
 export const TARGET_MODES = Object.freeze(['assetClass', 'ticker']);
+
+// ── 분산 분석 ─────────────────────────────────────────────
+// 비율 합계가 100%가 안 되는 종목의 나머지
+export const UNCLASSIFIED = '미분류';
+// '기타 금융자산 포함 전체' 보기에서 자산군·계좌 차트에 더하는 이름
+export const DEPOSIT_ASSET_CLASS = '예적금·공제회';
+export const PENSION_ASSET_CLASS = '연금 적립금';
+export const OTHER_ACCOUNT = '기타 금융자산';
+// 한 업종·한 나라가 아니므로 쏠림 경고와 점수에서 빼는 이름
+export const NON_SECTOR_NAMES = Object.freeze(['채권', '현금성', '기타', UNCLASSIFIED]);
+export const NON_COUNTRY_NAMES = Object.freeze(['기타', UNCLASSIFIED]);
+
+// ── 포트폴리오 건강도 점수 (요청서 6-3) — 배점과 기준값은 여기서만 고친다 ──
+//  fullAt: 만점이 되는 값, zeroAt: 0점이 되는 값, 그 사이는 선형
+export const SCORE_RULES = Object.freeze({
+  count: { points: 20, zeroAt: 1, fullAt: 10, etfCountsAs: 3 },
+  top3: { points: 30, fullAt: 0.4, zeroAt: 0.8 },
+  assetClass: { points: 30, fullAt: 0.25, zeroAt: 1 },
+  // 최대 섹터·최대 국가 비중이 설정의 경고 기준 이하면 만점, 100%면 0점
+  countrySector: { pointsEach: 10 },
+});
+
+export const SCORE_GRADES = Object.freeze([
+  { min: 80, label: '튼튼해요', tone: 'ok' },
+  { min: 60, label: '괜찮아요', tone: 'info' },
+  { min: 40, label: '점검이 필요해요', tone: 'warn' },
+  { min: 0, label: '쏠림이 커요', tone: 'danger' },
+]);

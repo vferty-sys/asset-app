@@ -23,6 +23,15 @@
   --ok-weak: #e1f5e9;
   --gain: var(--red);
   --loss: var(--blue);
+  /* 차트 색: 색약 검사기를 통과한 순서 그대로 쓴다 (순서를 바꾸지 말 것) */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+  --series-6: #008300;
+  --series-other: #a19f98;
+  --series-unclassified: #d4d2cb;
   --shadow: 0 1px 2px rgb(16 24 40 / 0.05), 0 2px 6px rgb(16 24 40 / 0.05);
   --focus: 0 0 0 3px rgb(47 107 240 / 0.35);
 
@@ -57,6 +66,14 @@
     --danger-weak: #3d1d20;
     --ok: #4fd18b;
     --ok-weak: #15301f;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --series-4: #c98500;
+    --series-5: #d55181;
+    --series-6: #008300;
+    --series-other: #6d6c66;
+    --series-unclassified: #44433f;
     --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
     --focus: 0 0 0 3px rgb(106 150 255 / 0.45);
   }
@@ -83,6 +100,14 @@
   --danger-weak: #3d1d20;
   --ok: #4fd18b;
   --ok-weak: #15301f;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
+  --series-6: #008300;
+  --series-other: #6d6c66;
+  --series-unclassified: #44433f;
   --shadow: 0 1px 2px rgb(0 0 0 / 0.3);
   --focus: 0 0 0 3px rgb(106 150 255 / 0.45);
 }

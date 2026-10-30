@@ -1,0 +1,130 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { gradeFor, linearFraction, scorePortfolio } from '../js/calc/score.js';
+import { valuePortfolio } from '../js/calc/valuation.js';
+import { DEFAULT_SETTINGS, SCORE_RULES } from '../js/constants.js';
+
+const near = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-6, `${message ?? ''} ${actual} ≠ ${expected}`);
+
+function holding(id, value, overrides = {}) {
+  return {
+    id, name: id, ticker: `KRX:${id}`, type: 'stock', currency: 'KRW', quantity: 1, avgPrice: value, manualPrice: value,
+    account: '일반', assetClass: '성장주', countryMix: { 한국: 100 }, sectorMix: { 기술: 100 }, dividendPerShare: null, memo: '',
+    ...overrides,
+  };
+}
+const score = (holdings, settings = DEFAULT_SETTINGS, fxRate = 1000) => scorePortfolio(valuePortfolio(holdings, { fxRate }).rows, settings);
+const item = (result, key) => result.items.find((entry) => entry.key === key);
+
+// 삼성전자 40%, QQQ 30%, SCHD 20%, 국고채 ETF 10%
+const EXAMPLE = [
+  holding('sam', 4_000_000, { name: '삼성전자' }),
+  holding('qqq', 3_000_000, {
+    name: 'QQQ', type: 'etf', currency: 'USD', quantity: 6, avgPrice: 500, manualPrice: 500,
+    countryMix: { 미국: 100 }, sectorMix: { 기술: 50, 통신: 15, 소비재: 35 },
+  }),
+  holding('schd', 2_000_000, {
+    name: 'SCHD', type: 'etf', currency: 'USD', quantity: 80, avgPrice: 25, manualPrice: 25, assetClass: '배당주',
+    countryMix: { 미국: 100 }, sectorMix: { 금융: 20, 필수소비재: 20, 헬스케어: 15, 산업재: 15, 에너지: 10, 기타: 20 },
+  }),
+  holding('bond', 1_000_000, { name: '국고채ETF', type: 'etf', assetClass: '채권', sectorMix: { 채권: 100 } }),
+];
+
+test('예시 포트폴리오: 항목별 점수와 합계', () => {
+  const result = score(EXAMPLE);
+  // 종목 수: 1 + ETF 3개 × 3 = 10 → 만점
+  near(item(result, 'count').points, 20);
+  // 상위 3종목 90% → 80% 이상이라 0점
+  near(item(result, 'top3').points, 0);
+  // 자산군 HHI = 0.7² + 0.2² + 0.1² = 0.54 → 30 × (1 - 0.54) / 0.75
+  near(item(result, 'assetClass').value, 0.54);
+  near(item(result, 'assetClass').points, 30 * (0.46 / 0.75));
+  // 섹터 최대: 기술 55% (기준 40%) → 10 × (1 - 0.55) / 0.6 = 7.5, 국가 최대 50% (기준 70%) → 10
+  near(item(result, 'countrySector').points, 17.5);
+  near(result.total, 20 + 0 + 18.4 + 17.5);
+  assert.equal(result.rounded, 56);
+  assert.equal(result.grade.label, '점검이 필요해요');
+});
+
+test('예시 포트폴리오: 감점 사유를 쉬운 문장으로', () => {
+  const result = score(EXAMPLE);
+  assert.equal(item(result, 'count').reason, '종목이 10개(ETF는 3개로 셈)로 충분히 나뉘어 있어요.');
+  assert.equal(item(result, 'top3').reason,
+    '가장 큰 3종목(삼성전자, QQQ, SCHD)이 전체의 90%예요. 40% 이하로 낮추면 만점이에요. ETF는 여러 회사를 담고 있어 실제 쏠림은 이보다 작을 수 있어요.');
+  assert.equal(item(result, 'assetClass').reason,
+    '가장 큰 자산군은 성장주로 70%를 차지해요. 한쪽으로 몰려 있어요. 다른 자산군의 비중을 늘리면 점수가 올라가요. (HHI 0.54)');
+  assert.equal(item(result, 'countrySector').reason,
+    '섹터는 기술이 55%로 기준 40%를 넘었어요. 국가는 가장 큰 한국도 50%로 기준 70% 이하예요.');
+});
+
+test('종목 수: 1개 0점, 10개 이상 20점, 그 사이 선형, ETF는 3개로 센다', () => {
+  near(item(score([holding('a', 100)]), 'count').points, 0);
+  near(item(score(Array.from({ length: 4 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20 * (3 / 9));
+  near(item(score(Array.from({ length: 12 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20);
+  near(item(score([holding('etf', 100, { type: 'etf' })]), 'count').points, 20 * (2 / 9));
+  // 같은 종목을 두 계좌에 나눠 가져도 1개
+  const twoAccounts = [holding('a', 100, { ticker: 'KRX:1' }), holding('b', 100, { ticker: 'KRX:1', account: 'ISA' })];
+  assert.equal(item(score(twoAccounts), 'count').value, 1);
+});
+
+test('상위 3종목 집중도: 40% 이하 30점, 80% 이상 0점, 그 사이 선형', () => {
+  const ten = Array.from({ length: 10 }, (_, i) => holding(`s${i}`, 100));
+  near(item(score(ten), 'top3').points, 30); // 30%
+  const sixty = [holding('a', 20), holding('b', 20), holding('c', 20), holding('d', 20), holding('e', 20)];
+  near(item(score(sixty), 'top3').value, 0.6);
+  near(item(score(sixty), 'top3').points, 15);
+  assert.match(item(score([holding('a', 1), holding('b', 1)]), 'top3').reason, /종목이 2개라/);
+});
+
+test('자산군 분산 HHI: 0.25 이하 30점, 1.0이면 0점', () => {
+  const four = ['성장주', '배당주', '채권', '현금성'].map((assetClass, i) => holding(`s${i}`, 100, { assetClass }));
+  near(item(score(four), 'assetClass').value, 0.25);
+  near(item(score(four), 'assetClass').points, 30);
+  near(item(score([holding('a', 100)]), 'assetClass').points, 0);
+  assert.match(item(score([holding('a', 100)]), 'assetClass').reason, /한 자산군에만/);
+  const two = [holding('a', 100), holding('b', 100, { assetClass: '채권' })];
+  near(item(score(two), 'assetClass').points, 30 * (0.5 / 0.75));
+});
+
+test('국가·섹터 쏠림: 기준 이하면 10점씩, 100%면 0점, 기준은 설정을 따른다', () => {
+  const allKorea = [holding('a', 50, { sectorMix: { 기술: 100 } }), holding('b', 50, { sectorMix: { 금융: 100 } })];
+  // 섹터 최대 50% (기준 40%) → 10 × 0.5/0.6, 국가 한국 100% → 0
+  near(item(score(allKorea), 'countrySector').points, 10 * (0.5 / 0.6));
+  near(item(score(allKorea, { ...DEFAULT_SETTINGS, warnSector: 50, warnCountry: 100 }), 'countrySector').points, 20);
+});
+
+test('섹터가 모두 기타·미분류면 섹터 쏠림은 감점하지 않는다', () => {
+  const result = score([holding('a', 100, { sectorMix: { 기타: 100 }, countryMix: { 미국: 50, 한국: 50 } })]);
+  near(item(result, 'countrySector').points, 20);
+  assert.match(item(result, 'countrySector').reason, /섹터 정보가 없어요/);
+});
+
+test('점수 구간: 80 이상 튼튼해요 / 60~79 괜찮아요 / 40~59 점검이 필요해요 / 40 미만 쏠림이 커요', () => {
+  assert.equal(gradeFor(100).label, '튼튼해요');
+  assert.equal(gradeFor(80).label, '튼튼해요');
+  assert.equal(gradeFor(79.5).label, '튼튼해요'); // 화면에 80점으로 보이므로
+  assert.equal(gradeFor(79.4).label, '괜찮아요');
+  assert.equal(gradeFor(60).label, '괜찮아요');
+  assert.equal(gradeFor(59).label, '점검이 필요해요');
+  assert.equal(gradeFor(40).label, '점검이 필요해요');
+  assert.equal(gradeFor(39.4).label, '쏠림이 커요');
+  assert.equal(gradeFor(0).label, '쏠림이 커요');
+});
+
+test('평가금액이 있는 종목이 없으면 점수 없음', () => {
+  assert.equal(score([]), null);
+  assert.equal(score([holding('usd', 100, { currency: 'USD' })], DEFAULT_SETTINGS, null), null);
+});
+
+test('배점 합계는 100점', () => {
+  const max = SCORE_RULES.count.points + SCORE_RULES.top3.points + SCORE_RULES.assetClass.points + SCORE_RULES.countrySector.pointsEach * 2;
+  assert.equal(max, 100);
+  assert.equal(score(EXAMPLE).items.reduce((sum, entry) => sum + entry.max, 0), 100);
+});
+
+test('linearFraction', () => {
+  near(linearFraction(0.6, 0.4, 0.8), 0.5);
+  assert.equal(linearFraction(0.3, 0.4, 0.8), 1);
+  assert.equal(linearFraction(0.9, 0.4, 0.8), 0);
+  near(linearFraction(4, 10, 1), 3 / 9);
+});

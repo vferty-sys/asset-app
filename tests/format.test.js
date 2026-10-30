@@ -1,8 +1,27 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  formatMoney, formatNumber, formatPrice, formatPercent, formatDate, formatYearMonth, formatQuoteTime, pnlClass, EMPTY,
+  formatMoney, formatNumber, formatPrice, formatPercent, formatPercentShort, formatDate, formatYearMonth, formatQuoteTime,
+  josa, pnlClass, EMPTY,
 } from '../js/format.js';
+
+test('안내 문장용 짧은 퍼센트', () => {
+  assert.equal(formatPercentShort(0.52), '52%');
+  assert.equal(formatPercentShort(0.404), '40.4%');
+  assert.equal(formatPercentShort(0.12345), '12.3%');
+  assert.equal(formatPercentShort(1), '100%');
+  assert.equal(formatPercentShort(null), EMPTY);
+});
+
+test('받침에 맞는 조사', () => {
+  assert.equal(josa('한국', '이', '가'), '이');
+  assert.equal(josa('기술주', '이', '가'), '가');
+  assert.equal(josa('채권', '으로', '로'), '으로');
+  assert.equal(josa('성장주', '으로', '로'), '로');
+  assert.equal(josa('서울', '으로', '로'), '로'); // ㄹ 받침
+  assert.equal(josa('서울', '이', '가'), '이');
+  assert.equal(josa('QQQ', '이', '가'), '가');
+});
 
 test('formatMoney 자동 단위: 원 → 만원 → 억원', () => {
   assert.equal(formatMoney(0), '0원');
