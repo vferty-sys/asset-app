@@ -84,15 +84,27 @@ export function yearlySamples(points) {
   return samples;
 }
 
+// 세금을 빼기로 한 항목은 그때까지 붙은 이자에서 세금을 뺀다 (받을 때 한꺼번에 떼는 것으로 단순화).
+// 기준일 전에 붙은 이자는 적립금에 섞여 있어 알 수 없으므로 기준일 뒤의 이자에만 매긴다.
+function withInterestTax(points, taxRate) {
+  const share = taxRate / 100;
+  return points.map((point) => {
+    const tax = Math.max(0, point.interest) * share;
+    return { ...point, tax, balance: point.balance - tax };
+  });
+}
+
 // 공제회·예적금 하나의 시나리오별 예측. endMonth는 그래프·퇴직 시점 계산에 필요한 마지막 달.
+// 시나리오마다 달별 { month, principal, interest(세전 이자), tax, balance(세금을 뺀 금액) }
 export function projectOtherAsset(asset, { nowMonth, endMonth }) {
   const startMonth = parseMonth(asset.baseDate) ?? nowMonth;
   const payoutMonth = parseMonth(asset.payoutDate);
   const contributionEndMonth = parseMonth(asset.contributionEndDate);
   const lastMonth = Math.max(endMonth, payoutMonth ?? startMonth, startMonth);
+  const taxRate = asset.applyTax ? asset.taxRate ?? 0 : 0;
   const result = { startMonth, payoutMonth, contributionEndMonth };
   for (const scenario of SCENARIOS) {
-    result[scenario] = simulateSavings({
+    result[scenario] = withInterestTax(simulateSavings({
       startMonth,
       endMonth: lastMonth,
       balance: asset.balance,
@@ -102,7 +114,7 @@ export function projectOtherAsset(asset, { nowMonth, endMonth }) {
       compounding: asset.compounding,
       contributionEndMonth,
       payoutMonth,
-    });
+    }), taxRate);
   }
   return result;
 }

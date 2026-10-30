@@ -24,6 +24,9 @@ export const SECTOR_OPTIONS = Object.freeze([
 ]);
 export const OTHER_ASSET_TYPES = Object.freeze(['공제회', '예금', '적금', '기타']);
 export const COMPOUNDING_TYPES = Object.freeze(['월복리', '연복리', '단리']);
+// 공제회·예적금 이자에 붙는 세금 기본값(%). 예금·적금은 이자소득세 14% + 지방소득세 1.4%.
+// 공제회 급여는 납입 기간에 따른 공제로 세금이 훨씬 적어서 3%로 어림잡는다. 항목마다 고칠 수 있다.
+export const INTEREST_TAX_RATES = Object.freeze({ 공제회: 3, 예금: 15.4, 적금: 15.4, 기타: 15.4 });
 export const PENSION_CATEGORIES = Object.freeze([
   '공무원연금', '국민연금', '퇴직연금', '연금저축', 'IRP', '연금보험', '기타',
 ]);

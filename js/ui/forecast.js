@@ -138,7 +138,7 @@ export function render(root, { getState, subscribe }) {
       const notes = [
         `주식: 지금 ${money(stockValue)}에 매달 ${money(s.stockMonthlyInvestment)}씩 더해 연 ${pct(s.stockReturnLow)} / ${pct(s.stockReturnBase)} / ${pct(s.stockReturnHigh)}로 굴린다고 계산했어요.`,
         linkedValue > 0 ? `${linkedAccounts.join('·')} 계좌의 종목 ${money(linkedValue)}은 연금으로 계산해서 주식에서 뺐어요.` : null,
-        '공제회·예적금은 항목마다 입력한 기준 이율로 계산했고, 퇴직 전에 받는 돈은 그대로 들고 있다고 봤어요.',
+        `공제회·예적금은 항목마다 입력한 기준 이율로 계산했고, 퇴직 전에 받는 돈은 그대로 들고 있다고 봤어요.${state.otherAssets.some((asset) => asset.applyTax) ? ' 세금 빼기를 켠 항목은 이자에서 세금을 뺐어요.' : ''}`,
         view === 'present' ? `현재가치는 물가상승률 연 ${pct(s.inflationRate)}로 지금 돈 가치로 바꾼 금액이에요.` : null,
       ].filter(Boolean);
       root.append(el('section', { class: 'card summary-card forecast-summary', 'aria-label': '퇴직 시점 종합 예측' },
@@ -327,11 +327,11 @@ export function render(root, { getState, subscribe }) {
             el('h3', { class: 'pension-name', text: asset.name }),
             el('span', { class: 'badge badge-tiny', text: asset.type })),
           el('p', { class: 'muted small' }, el('span', { class: 'legend-fan', 'aria-hidden': 'true' }),
-            single ? ` 예상 적립금 · ${viewLabel}` : ` 기준(진한 선)과 낮음~높음 범위(옅은 띠) · ${viewLabel}`),
+            `${single ? ' 예상 적립금' : ' 기준(진한 선)과 낮음~높음 범위(옅은 띠)'} · ${viewLabel}${asset.applyTax ? ' · 세후' : ''}`),
           chartFrame(canvas, 200),
           el('div', { class: 'table-wrap' }, keyTable),
-          el('p', { class: 'small', text: `${single ? '' : '기준으로 보면 '}넣은 돈 ${money(show(payoutPoint.principal, lastMonth))} + 이자 ${money(show(payoutPoint.interest, lastMonth))}` }),
-          el('p', { class: 'assumption-note', text: `가정: 연 이율 ${rateRange(asset.interestRates)} · ${asset.compounding}${asset.contributionGrowthRate ? ` · 납입액 해마다 ${pct(asset.contributionGrowthRate)} 증액` : ''} · 이자에 붙는 세금은 빼지 않았어요` }));
+          el('p', { class: 'small', text: `${single ? '' : '기준으로 보면 '}넣은 돈 ${money(show(payoutPoint.principal, lastMonth))} + 이자 ${money(show(payoutPoint.interest, lastMonth))}${payoutPoint.tax > 0 ? ` − 세금 ${money(show(payoutPoint.tax, lastMonth))}` : ''}` }),
+          el('p', { class: 'assumption-note', text: `가정: 연 이율 ${rateRange(asset.interestRates)} · ${asset.compounding}${asset.contributionGrowthRate ? ` · 납입액 해마다 ${pct(asset.contributionGrowthRate)} 증액` : ''} · ${asset.applyTax ? `이자에서 세금 ${pct(asset.taxRate)}를 뺐어요(기준일 뒤에 붙는 이자만)` : '이자에 붙는 세금은 빼지 않았어요'}` }));
       });
       root.append(el('section', { class: 'card forecast-section', 'aria-label': '공제회·예적금' },
         el('h2', { class: 'section-title', text: '공제회·예적금 적립금' }),

@@ -67,7 +67,7 @@ export function render(root, { getState, updateState, subscribe }) {
         el('span', { class: 'asset-item-head' },
           el('span', { class: 'asset-name' }, el('span', { text: asset.name }), el('span', { class: 'badge badge-tiny', text: asset.type }), staleBadge(asset)),
           el('span', { class: 'asset-value num', text: money(asset.balance) })),
-        el('span', { class: 'asset-meta', text: `${formatDate(asset.baseDate)} 기준 · ${rateText(asset.interestRates)} · ${asset.compounding}` }),
+        el('span', { class: 'asset-meta', text: `${formatDate(asset.baseDate)} 기준 · ${rateText(asset.interestRates)} · ${asset.compounding}${asset.applyTax ? ` · 세후 계산(세율 ${formatNumber(asset.taxRate, { maximumFractionDigits: 2 })}%)` : ''}` }),
         el('span', { class: 'asset-meta', text: plan })));
       }));
 

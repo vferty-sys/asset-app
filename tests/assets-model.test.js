@@ -11,8 +11,8 @@ const NOW = new Date(2026, 9, 30);
 
 const depositInput = (overrides = {}) => ({
   name: '행정공제회', type: '공제회', balance: '30,000,000', baseDate: '2026-10-01', monthlyContribution: '500,000',
-  contributionGrowthRate: '', interestRates: { low: '3', base: '4', high: '' }, compounding: '연복리',
-  contributionEndDate: '2040-12', payoutDate: '2041-06', ...overrides,
+  contributionGrowthRate: '', interestRates: { low: '3', base: '4', high: '' }, compounding: '월복리',
+  contributionEndDate: '2040-12', payoutDate: '2041-06', applyTax: true, taxRate: '3', ...overrides,
 });
 
 test('공제회·예적금: 정상 입력은 저장할 항목이 되고, 갱신일은 오늘', () => {
@@ -22,9 +22,22 @@ test('공제회·예적금: 정상 입력은 저장할 항목이 되고, 갱신�
   assert.match(id, /^o_/);
   assert.deepEqual(rest, {
     name: '행정공제회', type: '공제회', balance: 30_000_000, baseDate: '2026-10-01', monthlyContribution: 500_000,
-    contributionGrowthRate: 0, interestRates: { low: 3, base: 4, high: 4 }, compounding: '연복리',
-    contributionEndDate: '2040-12', payoutDate: '2041-06', updatedAt: '2026-10-30',
+    contributionGrowthRate: 0, interestRates: { low: 3, base: 4, high: 4 }, compounding: '월복리',
+    contributionEndDate: '2040-12', payoutDate: '2041-06', applyTax: true, taxRate: 3, updatedAt: '2026-10-30',
   });
+});
+
+test('공제회·예적금 세금: 켜면 세율이 꼭 필요하고, 끄면 세율 칸은 검사하지 않는다', () => {
+  assert.match(validateOtherAsset(depositInput({ taxRate: '' }), { now: NOW }).errors.taxRate, /세율/);
+  assert.match(validateOtherAsset(depositInput({ taxRate: '60' }), { now: NOW }).errors.taxRate, /0~50%/);
+  assert.equal(validateOtherAsset(depositInput({ taxRate: '15.4' }), { now: NOW }).value.taxRate, 15.4);
+  // 끄면 비어 있어도 저장되고, 세율은 종류의 기본값(공제회 3%)으로 둔다
+  const off = validateOtherAsset(depositInput({ applyTax: false, taxRate: '' }), { now: NOW });
+  assert.equal(off.ok, true);
+  assert.equal(off.value.applyTax, false);
+  assert.equal(off.value.taxRate, 3);
+  // 끈 채로 저장해도 입력해 둔 세율은 남는다 (다시 켤 때 그대로)
+  assert.equal(validateOtherAsset(depositInput({ applyTax: false, taxRate: '1.5' }), { now: NOW }).value.taxRate, 1.5);
 });
 
 test('공제회·예적금: 필수 항목과 납입 종료 시점', () => {
@@ -59,6 +72,14 @@ test('공제회·예적금: 저장 데이터 정리 (빠진 값은 기본값)', 
   assert.equal(asset.compounding, '월복리');
   assert.deepEqual(asset.interestRates, { low: 3, base: 3, high: 3 });
   assert.equal(asset.payoutDate, null);
+  // 세금 항목이 없던 예전 데이터: 세금 빼기 켜짐, 세율은 종류별 기본값
+  assert.equal(asset.applyTax, true);
+  assert.equal(asset.taxRate, 15.4);
+  assert.equal(normalizeOtherAsset({ type: '공제회' }).taxRate, 3);
+  assert.equal(normalizeOtherAsset({ type: '예금' }).taxRate, 15.4);
+  assert.equal(normalizeOtherAsset({ type: '적금', taxRate: 80 }).taxRate, 15.4);
+  assert.equal(normalizeOtherAsset({ type: '공제회', applyTax: false, taxRate: 2.2 }).taxRate, 2.2);
+  assert.equal(normalizeOtherAsset({ type: '공제회', applyTax: false }).applyTax, false);
 });
 
 const fixedInput = (overrides = {}) => ({

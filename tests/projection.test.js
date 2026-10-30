@@ -93,6 +93,27 @@ test('공제회·예적금: 시나리오 3개를 각각 계산한다', () => {
   near(valueAt(projection.high, START + 12).balance, 10_000_000 * 1.02 ** 12);
 });
 
+test('공제회·예적금 세금: 원금은 그대로 두고 이자에서만 세금을 뺀다', () => {
+  const asset = {
+    balance: 10_000_000, baseDate: '2026-01-15', monthlyContribution: 0, contributionGrowthRate: 0,
+    interestRates: { low: -2, base: 12, high: 12 }, compounding: '월복리', contributionEndDate: null, payoutDate: '2027-01',
+    applyTax: true, taxRate: 15.4,
+  };
+  const interest = 10_000_000 * (1.01 ** 12 - 1);
+  const taxed = valueAt(projectOtherAsset(asset, { nowMonth: START, endMonth: START + 12 }).base, START + 12);
+  near(taxed.principal, 10_000_000);
+  near(taxed.interest, interest);
+  near(taxed.tax, interest * 0.154);
+  near(taxed.balance, 10_000_000 + interest * (1 - 0.154));
+  // 끄면 세금 0, 세율을 바꾸면 그 세율로
+  const untaxed = valueAt(projectOtherAsset({ ...asset, applyTax: false }, { nowMonth: START, endMonth: START + 12 }).base, START + 12);
+  assert.equal(untaxed.tax, 0);
+  near(untaxed.balance, 10_000_000 + interest);
+  near(valueAt(projectOtherAsset({ ...asset, taxRate: 3 }, { nowMonth: START, endMonth: START + 12 }).base, START + 12).tax, interest * 0.03);
+  // 이자가 마이너스면 세금은 없다
+  assert.equal(valueAt(projectOtherAsset(asset, { nowMonth: START, endMonth: START + 12 }).low, START + 12).tax, 0);
+});
+
 test('원리금균등 월 수령액 (r = 0이면 적립금 / n)', () => {
   near(annuityPayment(120_000_000, 0, 240), 500_000);
   const r = 0.005;
@@ -232,4 +253,11 @@ test('퇴직 시점 종합: 주식 시나리오, 공제회·예적금 합계(퇴
   near(result.deposits.byType.예금, 5_000_000 * 1.01 ** 12); // 1년 뒤 받은 돈을 그대로 들고 있음
   near(result.deposits.low, 10_000_000 + 5_000_000 * 1.01 ** 12);
   assert.equal(result.pensionTotal, 0);
+
+  // 세금 빼기를 켠 항목은 세후 금액으로 더한다
+  const taxed = retirementProjection({
+    stockValue: 0, monthlyInvestment: 0, stockReturns: { low: 0, base: 0, high: 0 },
+    otherAssets: [{ ...otherAssets[1], applyTax: true, taxRate: 15.4 }], plans: [], retirementMonth, nowMonth: START,
+  });
+  near(taxed.deposits.base, 5_000_000 + 5_000_000 * (1.01 ** 12 - 1) * (1 - 0.154));
 });

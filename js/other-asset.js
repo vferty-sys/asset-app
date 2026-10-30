@@ -1,9 +1,11 @@
 // 공제회·예적금 데이터 정리와 입력 검증 (요청서 3-2)
 
-import { COMPOUNDING_TYPES, OTHER_ASSET_TYPES } from './constants.js';
+import { COMPOUNDING_TYPES, INTEREST_TAX_RATES, OTHER_ASSET_TYPES } from './constants.js';
 import { parseMonth, todayString } from './dates.js';
 import { createId } from './id.js';
 import { coerceValue, isPlainObject, normalizeScenarioRates, sanitizeObject, validateScenarioRates } from './validate.js';
+
+const TAX_RATE_SPEC = { type: 'number', min: 0, max: 50 };
 
 const STORED_FIELDS = {
   name: { type: 'string', default: '' },
@@ -15,12 +17,19 @@ const STORED_FIELDS = {
   compounding: { type: 'enum', options: COMPOUNDING_TYPES, default: '월복리' },
   contributionEndDate: { type: 'yearMonth', nullable: true, default: null },
   payoutDate: { type: 'yearMonth', nullable: true, default: null },
+  applyTax: { type: 'boolean', default: true },
   updatedAt: { type: 'date', nullable: true, default: null },
 };
+
+// 종류별 이자 세율 기본값(%)
+export function defaultTaxRate(type) {
+  return INTEREST_TAX_RATES[type] ?? INTEREST_TAX_RATES.기타;
+}
 
 export function normalizeOtherAsset(raw) {
   const source = isPlainObject(raw) ? raw : {};
   const fields = sanitizeObject(STORED_FIELDS, source);
+  const taxRate = coerceValue(TAX_RATE_SPEC, source.taxRate);
   return {
     id: typeof source.id === 'string' && source.id ? source.id : createId('o'),
     name: fields.name,
@@ -33,6 +42,8 @@ export function normalizeOtherAsset(raw) {
     compounding: fields.compounding,
     contributionEndDate: fields.contributionEndDate,
     payoutDate: fields.payoutDate,
+    applyTax: fields.applyTax,
+    taxRate: taxRate.ok ? taxRate.value : defaultTaxRate(fields.type),
     updatedAt: fields.updatedAt,
   };
 }
@@ -64,6 +75,11 @@ export function validateOtherAsset(input, { now = new Date() } = {}) {
   const rates = validateScenarioRates(input.interestRates, { min: -5, max: 30 });
   if (rates.error) errors.interestRates = rates.error;
   if (rates.warning) warnings.interestRates = rates.warning;
+
+  // 세금을 빼지 않을 때는 세율 칸이 숨겨지므로, 비어 있거나 틀려도 기본값으로 둔다
+  const applyTax = input.applyTax ?? true;
+  const taxRate = coerceValue(TAX_RATE_SPEC, input.taxRate);
+  if (applyTax && !taxRate.ok) errors.taxRate = '세율을 0~50% 사이 숫자로 입력해 주세요. 세금이 없으면 스위치를 끄세요.';
 
   const monthly = fields.monthlyContribution ?? 0;
   if (!errors.contributionEndDate && monthly > 0 && !fields.contributionEndDate) {
@@ -99,6 +115,8 @@ export function validateOtherAsset(input, { now = new Date() } = {}) {
       compounding: fields.compounding,
       contributionEndDate: fields.contributionEndDate,
       payoutDate: fields.payoutDate,
+      applyTax: Boolean(applyTax),
+      taxRate: taxRate.ok ? taxRate.value : defaultTaxRate(fields.type),
       updatedAt: todayString(now),
     },
   };
@@ -123,5 +141,7 @@ export function otherAssetToInput(asset) {
     compounding: asset.compounding,
     contributionEndDate: asset.contributionEndDate ?? '',
     payoutDate: asset.payoutDate ?? '',
+    applyTax: asset.applyTax,
+    taxRate: text(asset.taxRate),
   };
 }
