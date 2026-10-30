@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { gradeFor, linearFraction, scorePortfolio } from '../js/calc/score.js';
+import { effectiveHoldings, gradeFor, linearFraction, scorePortfolio } from '../js/calc/score.js';
 import { valuePortfolio } from '../js/calc/valuation.js';
 import { DEFAULT_SETTINGS, SCORE_RULES } from '../js/constants.js';
 
@@ -30,10 +30,14 @@ const EXAMPLE = [
   holding('bond', 1_000_000, { name: '국고채ETF', type: 'etf', assetClass: '채권', sectorMix: { 채권: 100 } }),
 ];
 
+// 실효 종목 수 = 1 / (0.4² + 3×(0.3/3)² + 3×(0.2/3)² + 3×(0.1/3)²) ≈ 4.84
+const EXAMPLE_EFFECTIVE = 1 / (0.16 + 0.03 + 0.04 / 3 + 0.01 / 3);
+const EXAMPLE_COUNT_POINTS = 20 * ((EXAMPLE_EFFECTIVE - 1) / 9);
+
 test('예시 포트폴리오: 항목별 점수와 합계', () => {
   const result = score(EXAMPLE);
-  // 종목 수: 1 + ETF 3개 × 3 = 10 → 만점
-  near(item(result, 'count').points, 20);
+  near(item(result, 'count').value, EXAMPLE_EFFECTIVE);
+  near(item(result, 'count').points, EXAMPLE_COUNT_POINTS);
   // 상위 3종목 90% → 80% 이상이라 0점
   near(item(result, 'top3').points, 0);
   // 자산군 HHI = 0.7² + 0.2² + 0.1² = 0.54 → 30 × (1 - 0.54) / 0.75
@@ -41,14 +45,15 @@ test('예시 포트폴리오: 항목별 점수와 합계', () => {
   near(item(result, 'assetClass').points, 30 * (0.46 / 0.75));
   // 섹터 최대: 기술 55% (기준 40%) → 10 × (1 - 0.55) / 0.6 = 7.5, 국가 최대 50% (기준 70%) → 10
   near(item(result, 'countrySector').points, 17.5);
-  near(result.total, 20 + 0 + 18.4 + 17.5);
-  assert.equal(result.rounded, 56);
+  near(result.total, EXAMPLE_COUNT_POINTS + 0 + 18.4 + 17.5);
+  assert.equal(result.rounded, 44);
   assert.equal(result.grade.label, '점검이 필요해요');
 });
 
 test('예시 포트폴리오: 감점 사유를 쉬운 문장으로', () => {
   const result = score(EXAMPLE);
-  assert.equal(item(result, 'count').reason, '종목이 10개(ETF는 3개로 셈)로 충분히 나뉘어 있어요.');
+  assert.equal(item(result, 'count').reason,
+    '실효 종목 수는 4.8개예요(금액 기준, ETF는 3개로 나눠 셈). 보유 종목은 4개지만 금액이 일부 종목에 몰려 있어서 더 적게 셌어요. 금액을 여러 종목에 고르게 나눌수록 10개에 가까워지고 점수가 올라가요.');
   assert.equal(item(result, 'top3').reason,
     '가장 큰 3종목(삼성전자, QQQ, SCHD)이 전체의 90%예요. 40% 이하로 낮추면 만점이에요. ETF는 여러 회사를 담고 있어 실제 쏠림은 이보다 작을 수 있어요.');
   assert.equal(item(result, 'assetClass').reason,
@@ -57,14 +62,43 @@ test('예시 포트폴리오: 감점 사유를 쉬운 문장으로', () => {
     '섹터는 기술이 55%로 기준 40%를 넘었어요. 국가는 가장 큰 한국도 50%로 기준 70% 이하예요.');
 });
 
-test('종목 수: 1개 0점, 10개 이상 20점, 그 사이 선형, ETF는 3개로 센다', () => {
+test('실효 종목 수: 금액 기준, 1개 0점, 10개 이상 20점, 그 사이 선형', () => {
   near(item(score([holding('a', 100)]), 'count').points, 0);
+  assert.equal(item(score([holding('a', 100)]), 'count').reason, '종목이 1개뿐이에요. 그 종목이 떨어지면 자산 전체가 흔들려요.');
   near(item(score(Array.from({ length: 4 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20 * (3 / 9));
   near(item(score(Array.from({ length: 12 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20);
+  assert.match(item(score(Array.from({ length: 12 }, (_, i) => holding(`s${i}`, 100))), 'count').reason, /10개 이상이라 만점/);
+  // ETF 하나는 금액을 3등분해 3종목으로
+  near(item(score([holding('etf', 100, { type: 'etf' })]), 'count').value, 3);
   near(item(score([holding('etf', 100, { type: 'etf' })]), 'count').points, 20 * (2 / 9));
   // 같은 종목을 두 계좌에 나눠 가져도 1개
   const twoAccounts = [holding('a', 100, { ticker: 'KRX:1' }), holding('b', 100, { ticker: 'KRX:1', account: 'ISA' })];
-  assert.equal(item(score(twoAccounts), 'count').value, 1);
+  near(item(score(twoAccounts), 'count').value, 1);
+});
+
+test('실효 종목 수: 아주 작은 금액만 담은 종목·ETF로는 점수가 거의 오르지 않는다', () => {
+  // 삼성전자 97% + ETF 3개 각 1% — 개수로 세던 예전 규칙에서는 10개 만점이었다
+  const tinyEtfs = [holding('sam', 9_700), ...['e1', 'e2', 'e3'].map((id) => holding(id, 100, { type: 'etf' }))];
+  const tiny = item(score(tinyEtfs), 'count');
+  near(tiny.value, 1 / (0.97 ** 2 + 3 * 3 * (0.01 / 3) ** 2));
+  assert.ok(tiny.points < 0.2, String(tiny.points));
+  assert.match(tiny.reason, /보유 종목은 4개지만 금액이 일부 종목에 몰려/);
+
+  // 한 종목 91% + 9종목 1%씩 → 약 1.2개
+  const tinyStocks = [holding('big', 9_100), ...Array.from({ length: 9 }, (_, i) => holding(`t${i}`, 100))];
+  near(item(score(tinyStocks), 'count').value, 1 / (0.91 ** 2 + 9 * 0.01 ** 2));
+
+  // 97% + 1%×3 이 70% + 30%보다 점수가 낮다 (예전 규칙에서는 거꾸로였다)
+  const seventyThirty = [holding('sam', 7_000), holding('etf', 3_000, { type: 'etf' })];
+  assert.ok(score(tinyEtfs).total < score(seventyThirty).total);
+});
+
+test('effectiveHoldings: 1 / Σ비중², ETF는 비중을 나눠 센다', () => {
+  near(effectiveHoldings([{ type: 'stock', weight: 0.5 }, { type: 'stock', weight: 0.5 }]), 2);
+  near(effectiveHoldings([{ type: 'stock', weight: 0.7 }, { type: 'stock', weight: 0.3 }]), 1 / 0.58);
+  near(effectiveHoldings([{ type: 'etf', weight: 1 }]), 3);
+  near(effectiveHoldings([{ type: 'etf', weight: 1 }], 1), 1);
+  assert.equal(effectiveHoldings([]), 0);
 });
 
 test('상위 3종목 집중도: 40% 이하 30점, 80% 이상 0점, 그 사이 선형', () => {

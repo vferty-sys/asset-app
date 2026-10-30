@@ -18,18 +18,39 @@ export function gradeFor(total) {
 
 const pct = formatPercentShort;
 
+// 실효 종목 수 = 1 / Σ(비중²): 돈이 고르게 나뉘었다면 몇 종목을 가진 것과 같은지.
+// 10종목에 10%씩이면 10, 한 종목 91% + 9종목 1%씩이면 약 1.2.
+// ETF는 비중을 etfCountsAs개로 똑같이 나눈 종목들로 본다 (요청서: ETF는 3종목으로 간주).
+export function effectiveHoldings(holdings, etfCountsAs = SCORE_RULES.count.etfCountsAs) {
+  const hhi = holdings.reduce((sum, item) => {
+    const parts = item.type === 'etf' ? etfCountsAs : 1;
+    return sum + parts * (item.weight / parts) ** 2;
+  }, 0);
+  return hhi > 0 ? 1 / hhi : 0;
+}
+
 function countItem(holdings) {
   const rule = SCORE_RULES.count;
-  const count = holdings.reduce((n, item) => n + (item.type === 'etf' ? rule.etfCountsAs : 1), 0);
-  const counted = holdings.some((item) => item.type === 'etf') ? `${count}개(ETF는 ${rule.etfCountsAs}개로 셈)` : `${count}개`;
+  const effective = effectiveHoldings(holdings, rule.etfCountsAs);
+  const nominal = holdings.reduce((n, item) => n + (item.type === 'etf' ? rule.etfCountsAs : 1), 0);
+  const hasEtf = holdings.some((item) => item.type === 'etf');
   let reason;
-  if (count >= rule.fullAt) reason = `종목이 ${counted}로 충분히 나뉘어 있어요.`;
-  else if (count <= rule.zeroAt) reason = '종목이 1개뿐이에요. 그 종목이 떨어지면 자산 전체가 흔들려요.';
-  else reason = `종목이 ${counted}예요. ${rule.fullAt}개 이상이면 만점이에요.`;
+  if (holdings.length === 1 && !hasEtf) {
+    reason = '종목이 1개뿐이에요. 그 종목이 떨어지면 자산 전체가 흔들려요.';
+  } else {
+    const basis = hasEtf ? `금액 기준, ETF는 ${rule.etfCountsAs}개로 나눠 셈` : '금액 기준';
+    reason = `실효 종목 수는 ${formatNumber(effective, { maximumFractionDigits: 1 })}개예요(${basis}).`;
+    if (effective < nominal * 0.7) {
+      reason += ` 보유 종목은 ${holdings.length}개지만 금액이 일부 종목에 몰려 있어서 더 적게 셌어요.`;
+    }
+    reason += effective >= rule.fullAt
+      ? ` ${rule.fullAt}개 이상이라 만점이에요.`
+      : ` 금액을 여러 종목에 고르게 나눌수록 ${rule.fullAt}개에 가까워지고 점수가 올라가요.`;
+  }
   return {
-    key: 'count', label: '종목 수', max: rule.points,
-    points: rule.points * linearFraction(count, rule.fullAt, rule.zeroAt),
-    value: count, reason,
+    key: 'count', label: '실효 종목 수', max: rule.points,
+    points: rule.points * linearFraction(effective, rule.fullAt, rule.zeroAt),
+    value: effective, reason,
   };
 }
 

@@ -6,13 +6,22 @@ import { formatNumber } from '../format.js';
 const HELP = {
   score: [
     '주식 포트폴리오가 한쪽에 쏠리지 않고 잘 나뉘어 있는지 100점 만점으로 매긴 점수예요.',
-    '종목 수(20점), 상위 3종목 집중도(30점), 자산군 분산(30점), 국가·섹터 쏠림(20점)을 더해요.',
+    '실효 종목 수(20점), 상위 3종목 집중도(30점), 자산군 분산(30점), 국가·섹터 쏠림(20점)을 더해요.',
     '참고용 점수이고, 투자 권유가 아니에요.',
   ],
-  assetClass: [
+};
+
+// 항목 이름 옆 (?) 도움말: [용어, 설명]
+const ITEM_HELP = {
+  count: ['실효 종목 수', [
+    '돈이 실제로 몇 군데에 나뉘어 있는지 나타내는 숫자예요. 종목 개수가 아니라 금액 비중으로 세요.',
+    '예: 10종목에 10%씩 → 10개, 한 종목 91% + 나머지 9종목 1%씩 → 약 1.2개',
+    'ETF는 여러 회사를 담고 있어서 금액을 3종목으로 나눠 세요. 1개 0점, 10개 이상이면 만점이에요.',
+  ]],
+  assetClass: ['HHI', [
     'HHI는 얼마나 한쪽에 몰려 있는지 나타내는 숫자예요. 자산군 비중을 제곱해서 모두 더해요.',
     '모두 한 자산군이면 1, 네 자산군에 똑같이 나누면 0.25예요. 작을수록 고르게 나뉜 거예요.',
-  ],
+  ]],
 };
 
 function points(value) {
@@ -48,7 +57,7 @@ export function scoreCard(score) {
       scoreGauge(score),
       el('ul', { class: 'score-items' }, score.items.map((item) => el('li', { class: 'score-item' },
         el('div', { class: 'score-item-head' },
-          el('span', { class: 'score-item-label' }, item.label, item.key === 'assetClass' ? helpTip('HHI', HELP.assetClass) : null),
+          el('span', { class: 'score-item-label' }, item.label, ITEM_HELP[item.key] ? helpTip(...ITEM_HELP[item.key]) : null),
           el('span', { class: 'score-item-points', text: `${points(item.points)} / ${item.max}점` })),
         el('div', {
           class: 'meter',

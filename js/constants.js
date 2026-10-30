@@ -101,6 +101,9 @@ export const NON_COUNTRY_NAMES = Object.freeze(['기타', UNCLASSIFIED]);
 
 // ── 포트폴리오 건강도 점수 (요청서 6-3) — 배점과 기준값은 여기서만 고친다 ──
 //  fullAt: 만점이 되는 값, zeroAt: 0점이 되는 값, 그 사이는 선형
+//  count: 요청서의 '종목 수'를 금액 기준인 실효 종목 수(1 / Σ비중²)로 센다.
+//         작은 금액만 담은 종목으로 점수가 오르지 않게 하려는 것(사용자와 합의).
+//         ETF는 비중을 etfCountsAs개로 똑같이 나눈 종목들로 본다.
 export const SCORE_RULES = Object.freeze({
   count: { points: 20, zeroAt: 1, fullAt: 10, etfCountsAs: 3 },
   top3: { points: 30, fullAt: 0.4, zeroAt: 0.8 },
