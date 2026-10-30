@@ -77,6 +77,14 @@ export function formatYearMonth(value) {
   return match ? `${match[1]}년 ${Number(match[2])}월` : EMPTY;
 }
 
+// 시세 시각. 오늘이면 '10:05', 다른 날이면 '10/29 10:05'
+export function formatQuoteTime(value, now = new Date()) {
+  const date = new Date(value);
+  if (value == null || Number.isNaN(date.getTime())) return EMPTY;
+  const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+  return date.toDateString() === now.toDateString() ? time : `${date.getMonth() + 1}/${date.getDate()} ${time}`;
+}
+
 // 손익 색상용 CSS 클래스. 실제 색은 CSS 변수(--gain, --loss)가 정한다.
 export function pnlClass(value) {
   if (!isNumber(value) || value === 0) return 'is-flat';

@@ -50,6 +50,14 @@
   color: var(--loss);
 }
 
+.summary-note {
+  grid-column: 1 / -1;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}
+
 @media (min-width: 768px) {
   .summary-card {
     grid-template-columns: minmax(0, 1.3fr) repeat(2, minmax(0, 1fr));
@@ -58,6 +66,139 @@
   .stat-main {
     grid-column: auto;
   }
+}
+
+/* ── 설정: 연결 테스트 ───────────────────── */
+.connection-tools {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.connection-result {
+  font-size: 0.875rem;
+}
+
+/* ── 가이드 문서 ─────────────────────── */
+.back-link {
+  justify-self: start;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.guide {
+  display: grid;
+  gap: 12px;
+  line-height: 1.7;
+}
+
+.guide h2 {
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 1.1875rem;
+}
+
+.guide h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.guide h3 {
+  margin-top: 8px;
+  font-size: 1.0625rem;
+}
+
+.guide h4 {
+  font-size: 1rem;
+}
+
+.guide ol,
+.guide ul {
+  margin: 0;
+  padding-left: 1.4em;
+}
+
+.guide li + li {
+  margin-top: 4px;
+}
+
+.guide code {
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+.guide pre {
+  margin: 0;
+  max-height: 420px;
+  overflow: auto;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  line-height: 1.5;
+}
+
+.guide pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.8125rem;
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+.guide img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.guide hr {
+  width: 100%;
+  margin: 8px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
+}
+
+.guide-note {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-left: 4px solid var(--primary);
+  border-radius: 0 12px 12px 0;
+  background: var(--primary-weak);
+}
+
+.code-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.code-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.code-card summary {
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.code-card pre {
+  margin-top: 8px;
 }
 
 /* ── 빈 화면 ─────────────────────────── */

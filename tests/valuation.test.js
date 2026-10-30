@@ -26,9 +26,19 @@ test('원화 평가금액 = 수량 × 현재가 × 환율 (달러 종목)', () =
 
 test('가격 우선순위: 시트 가격 → 직접 입력한 현재가 → 평단가', () => {
   const prices = { 'KRX:005930': { price: 72000, currency: 'KRW' } };
-  assert.deepEqual(resolvePrice(krw(), prices), { price: 72000, source: 'sheet' });
-  assert.deepEqual(resolvePrice(krw(), {}), { price: 70000, source: 'manual' });
-  assert.deepEqual(resolvePrice(krw({ manualPrice: null }), {}), { price: 60000, source: 'avg' });
+  assert.deepEqual(resolvePrice(krw(), prices), { price: 72000, source: 'sheet', currencyMismatch: false });
+  assert.deepEqual(resolvePrice(krw(), {}), { price: 70000, source: 'manual', currencyMismatch: false });
+  assert.deepEqual(resolvePrice(krw({ manualPrice: null }), {}), { price: 60000, source: 'avg', currencyMismatch: false });
+});
+
+test('시트가 알려준 통화가 종목 통화와 다르면 시트 가격을 쓰지 않는다', () => {
+  const prices = { 'KRX:005930': { price: 45.5, currency: 'USD' } };
+  assert.deepEqual(resolvePrice(krw(), prices), { price: 70000, source: 'manual', currencyMismatch: true });
+  const row = valueHolding(krw(), { prices });
+  assert.equal(row.valueKRW, 700000);
+  assert.equal(row.currencyMismatch, true);
+  // 시트에 통화 정보가 없으면 그대로 쓴다
+  assert.equal(resolvePrice(krw(), { 'KRX:005930': { price: 72000, currency: null } }).source, 'sheet');
 });
 
 test('시트 가격이 0이거나 이상하면 다음 순위 가격을 쓴다', () => {

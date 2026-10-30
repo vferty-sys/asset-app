@@ -397,9 +397,34 @@ select.input {
   color: var(--danger);
 }
 
+.banner-info {
+  background: var(--primary-weak);
+  color: var(--primary);
+}
+
+.banner-ok {
+  background: var(--ok-weak);
+  color: var(--ok);
+}
+
 .banner a {
   color: inherit;
   font-weight: 700;
+}
+
+.banner p + p {
+  margin-top: 4px;
+}
+
+.notice-title {
+  font-weight: 700;
+}
+
+.notice-list {
+  display: grid;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding-left: 1.2em;
 }
 
 /* ── (?) 도움말 ───────────────────────── */

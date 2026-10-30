@@ -22,13 +22,15 @@ export function resolveFx({ sheetRate = null, manualRate = null } = {}) {
 }
 
 // 가격 우선순위: 시트 가격 → 직접 입력한 현재가 → 평단가(화면에 경고 표시)
+// 시트가 알려준 통화가 종목 통화와 다르면 금액이 크게 틀어지므로 시트 가격을 쓰지 않는다.
 // prices: { [티커]: { price, currency } }
 export function resolvePrice(holding, prices = {}) {
   const quote = Object.hasOwn(prices, holding.ticker) ? prices[holding.ticker] : null;
-  if (isPositive(quote?.price)) return { price: quote.price, source: 'sheet' };
-  if (isPositive(holding.manualPrice)) return { price: holding.manualPrice, source: 'manual' };
-  if (isNonNegative(holding.avgPrice)) return { price: holding.avgPrice, source: 'avg' };
-  return { price: null, source: 'none' };
+  const currencyMismatch = Boolean(quote?.currency) && quote.currency !== holding.currency;
+  if (isPositive(quote?.price) && !currencyMismatch) return { price: quote.price, source: 'sheet', currencyMismatch };
+  if (isPositive(holding.manualPrice)) return { price: holding.manualPrice, source: 'manual', currencyMismatch };
+  if (isNonNegative(holding.avgPrice)) return { price: holding.avgPrice, source: 'avg', currencyMismatch };
+  return { price: null, source: 'none', currencyMismatch };
 }
 
 // 해당 통화 금액을 원화로. 달러인데 환율이 없으면 null.
@@ -39,7 +41,7 @@ export function toKRW(amount, currency, fxRate) {
 }
 
 export function valueHolding(holding, { prices = {}, fxRate = null } = {}) {
-  const { price, source } = resolvePrice(holding, prices);
+  const { price, source, currencyMismatch } = resolvePrice(holding, prices);
   const quantity = isNonNegative(holding.quantity) ? holding.quantity : 0;
   const valueKRW = price == null ? null : toKRW(quantity * price, holding.currency, fxRate);
   const costKRW = isNonNegative(holding.avgPrice) ? toKRW(quantity * holding.avgPrice, holding.currency, fxRate) : null;
@@ -48,6 +50,7 @@ export function valueHolding(holding, { prices = {}, fxRate = null } = {}) {
     holding,
     price,
     priceSource: source,
+    currencyMismatch,
     valueKRW,
     costKRW,
     pnlKRW,

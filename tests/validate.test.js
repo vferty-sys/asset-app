@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parseNumberInput, coerceValue, sanitizeObject } from '../js/validate.js';
+import { SETTINGS_SCHEMA } from '../js/constants.js';
 
 test('parseNumberInput: 쉼표와 공백을 허용하고, 빈 값은 null, 이상한 값은 NaN', () => {
   assert.equal(parseNumberInput('1,234.5'), 1234.5);
@@ -58,6 +59,25 @@ test('coerceValue url: https만 허용, 빈 값은 빈 문자열', () => {
   assert.deepEqual(coerceValue(spec, ''), { ok: true, value: '' });
   assert.equal(coerceValue(spec, 'http://example.com').ok, false);
   assert.equal(coerceValue(spec, '주소 아님').ok, false);
+});
+
+test('시트 주소는 Apps Script 웹 앱 주소(/exec)만 받는다', () => {
+  const spec = SETTINGS_SCHEMA.sheetUrl;
+  for (const url of [
+    'https://script.google.com/macros/s/AKfycbx_abc-123/exec',
+    'https://script.google.com/a/macros/school.ac.kr/s/AKfycbx/exec',
+  ]) {
+    assert.deepEqual(coerceValue(spec, url), { ok: true, value: url });
+  }
+  for (const url of [
+    'https://script.google.com/macros/s/AKfycbx/dev',
+    'https://script.google.com/home/projects/abc/edit',
+    'https://docs.google.com/spreadsheets/d/abc/edit',
+    'https://example.com/macros/s/abc/exec',
+  ]) {
+    assert.match(coerceValue(spec, url).error, /웹 앱 주소/, url);
+  }
+  assert.deepEqual(coerceValue(spec, ''), { ok: true, value: '' });
 });
 
 test('coerceValue yearMonth / date: 형식을 맞추고 없는 날짜는 거부', () => {

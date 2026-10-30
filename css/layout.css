@@ -67,6 +67,69 @@
   justify-content: flex-end;
 }
 
+/* 시세 표시 칩: 모바일은 짧게, PC는 "시세 기준: 10:00 (약 20분 지연)" */
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.status-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+
+.status-chip:disabled {
+  cursor: progress;
+}
+
+.status-chip .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.status-chip.is-error {
+  border-color: var(--warn);
+  background: var(--warn-weak);
+  color: var(--warn);
+}
+
+.status-chip.is-loading .icon {
+  animation: spin 0.9s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.chip-long {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .chip-long {
+    display: inline;
+  }
+
+  .chip-short {
+    display: none;
+  }
+}
+
 .header-settings {
   display: grid;
   place-items: center;

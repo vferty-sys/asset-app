@@ -32,14 +32,25 @@ js/app.js           진입점, 탭 이동
 js/state.js         앱 데이터 메모리 사본 + 변경 알림
 js/storage.js       LocalStorage 저장, 스키마 버전 관리, 백업/복원
 js/holding.js       보유 종목 데이터 정리와 입력 검증
-js/market.js        화면에서 쓰는 시세(가격·환율)
+js/price.js         구글 시트 시세 받기, 응답 검사, 마지막 시세 캐시
+js/market.js        시세 상태(마지막 시세, 받아오는 중인지)와 화면 알림
+js/markdown.js      가이드 문서(.md)를 앱 안에서 보여주는 작은 파서
 js/calc/            순수 계산 함수 (평가금액, CSV 붙여넣기 …)
 js/validate.js      입력값 검증
 js/format.js        금액·비율·날짜 표시
 js/constants.js     기본 설정값과 기준값
 js/ui/              탭별 화면
+apps-script/Code.gs 구글 시트에 붙여넣을 Apps Script 코드
+docs/               가이드 문서 (앱 안 '시트 연결 가이드' 화면에도 그대로 보임)
 tests/              단위 테스트
+.nojekyll           GitHub Pages가 파일을 그대로 올리도록 (가이드 .md를 앱에서 읽기 위해 필요)
 ```
+
+## 구글 시트로 시세 자동 연동
+
+현재가와 달러 환율은 각자 만든 구글 시트(`GOOGLEFINANCE`)에서 받아옵니다.
+설정 방법은 [docs/SHEET_SETUP.md](docs/SHEET_SETUP.md)에 있고, 앱의 설정 → '연결 가이드 보기'에서도 볼 수 있습니다.
+시트 주소가 없으면 직접 입력한 현재가로 계산합니다.
 
 ## 보유 종목 CSV 붙여넣기 형식
 

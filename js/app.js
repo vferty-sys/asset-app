@@ -3,7 +3,9 @@
 import { APP_NAME, STORAGE_KEYS } from './constants.js';
 import { pickStorageBackend } from './storage.js';
 import { initState, reloadState, getState, updateState, subscribe } from './state.js';
+import { initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
 import { el, clear, closeAllModals, showToast } from './dom.js';
+import { mountPriceStatus } from './ui/price-status.js';
 import * as dashboard from './ui/dashboard.js';
 import * as holdings from './ui/holdings.js';
 import * as analysis from './ui/analysis.js';
@@ -11,6 +13,7 @@ import * as rebalance from './ui/rebalance.js';
 import * as forecast from './ui/forecast.js';
 import * as others from './ui/others.js';
 import * as settings from './ui/settings.js';
+import * as guide from './ui/guide.js';
 
 const VIEWS = {
   dashboard: { title: '대시보드', view: dashboard },
@@ -20,8 +23,12 @@ const VIEWS = {
   forecast: { title: '미래 예측', view: forecast },
   others: { title: '기타 자산', view: others },
   settings: { title: '설정', view: settings },
+  guide: { title: '시트 연결 가이드', view: guide },
 };
 const DEFAULT_VIEW = 'dashboard';
+
+// 앱을 다시 펼쳤을 때 마지막 시세가 이보다 오래됐으면 새로 받는다.
+const PRICE_STALE_MS = 15 * 60 * 1000;
 
 const STARTUP_MESSAGES = {
   corrupt: '저장된 데이터를 읽지 못해 새로 시작했어요. 이전 데이터는 브라우저 안에 따로 보관해 두었어요.',
@@ -96,6 +103,29 @@ function applyAppearance({ theme, invertPnlColors }) {
   syncThemeColorMeta();
 }
 
+async function updatePrices(sheetUrl, { quiet = false } = {}) {
+  const result = await refreshPrices(sheetUrl);
+  if (result.error && !quiet) showToast(`새 시세를 받지 못했어요. ${result.error.message}`, 'danger', 5000);
+}
+
+function watchPrices() {
+  let sheetUrl = getState().settings.sheetUrl;
+  if (sheetUrl) updatePrices(sheetUrl);
+
+  subscribe((state) => {
+    if (state.settings.sheetUrl === sheetUrl) return;
+    sheetUrl = state.settings.sheetUrl;
+    if (sheetUrl) updatePrices(sheetUrl);
+    else resetPriceStatus();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible' || !sheetUrl) return;
+    const fetchedAt = Date.parse(lastFetchedAt(sheetUrl) ?? '');
+    if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > PRICE_STALE_MS) updatePrices(sheetUrl, { quiet: true });
+  });
+}
+
 function showStartupBanner(status, persistent) {
   const message = persistent ? STARTUP_MESSAGES[status] : '이 브라우저에서는 데이터를 저장할 수 없어요(사생활 보호 모드 등). 창을 닫으면 입력한 내용이 사라져요.';
   const holder = document.getElementById('app-banner');
@@ -115,6 +145,10 @@ function start() {
   applyAppearance(getState().settings);
   subscribe((state) => applyAppearance(state.settings));
   darkQuery.addEventListener('change', syncThemeColorMeta);
+
+  initMarket(backend);
+  mountPriceStatus(document.getElementById('price-status'), { getState, subscribe });
+  watchPrices();
 
   window.addEventListener('hashchange', route);
   // 다른 탭에서 저장하면 이 탭도 최신 데이터로 다시 그린다.

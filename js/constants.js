@@ -28,11 +28,19 @@ export const PENSION_CATEGORIES = Object.freeze([
   '공무원연금', '국민연금', '퇴직연금', '연금저축', 'IRP', '연금보험', '기타',
 ]);
 
+// 구글 Apps Script 웹 앱 주소 (회사·학교 계정은 /a/macros/도메인/ 형식)
+export const SHEET_URL_PATTERN = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[\w-]+\/exec\/?$/;
+
 // 설정 항목의 형식·범위·기본값. 저장 데이터 정리와 설정 화면 입력 검증에 함께 쓴다.
 // 비율(%) 값은 사람이 입력하는 그대로 퍼센트 숫자로 저장한다. (예: 2.5 → 2.5%)
 export const SETTINGS_SCHEMA = Object.freeze({
   // 시세 연결
-  sheetUrl: { type: 'url', default: '' },
+  sheetUrl: {
+    type: 'url',
+    pattern: SHEET_URL_PATTERN,
+    patternMessage: '구글 Apps Script 웹 앱 주소(https://script.google.com/macros/s/…/exec)를 붙여넣어 주세요.',
+    default: '',
+  },
   manualFxUsdKrw: { type: 'number', nullable: true, min: 1, max: 100000, default: null },
 
   // 내 정보

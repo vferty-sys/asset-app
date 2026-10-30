@@ -2,6 +2,7 @@
 
 import { SETTINGS_SCHEMA } from '../constants.js';
 import { coerceValue } from '../validate.js';
+import { testConnection } from '../market.js';
 import { el, helpTip, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
 import { createField, createToggleField, selectInput, textInput } from './form.js';
@@ -42,8 +43,9 @@ const SECTIONS = [
       {
         key: 'sheetUrl', label: '내 구글 시트 웹 앱 주소', kind: 'text', inputType: 'url',
         placeholder: 'https://script.google.com/macros/s/…/exec',
-        hint: '아직 없다면 비워 두세요.',
+        hint: '아직 없다면 비워 두세요. 비우면 직접 입력한 가격으로 계산해요.',
         help: '구글 시트에 붙인 Apps Script를 "웹 앱"으로 배포하면 생기는 주소예요. 시트에는 종목 코드만 적고 수량·금액은 적지 않아요.',
+        extra: 'connection',
       },
       {
         key: 'manualFxUsdKrw', label: '달러 환율 (직접 입력)', kind: 'number', suffix: '원', placeholder: '예: 1380',
@@ -133,6 +135,30 @@ const SECTIONS = [
   },
 ];
 
+// 연결 테스트 결과 문구. 환율이 없거나, 가격을 못 받았거나, 시트에 없는 종목이 있으면 경고로 보여준다.
+function connectionReport(data, holdings) {
+  const count = Object.keys(data.prices).length;
+  const lines = [`연결됐어요! 시세 ${count}개를 받았어요.`];
+  let tone = 'ok';
+  if (data.fx.USDKRW) {
+    lines.push(`달러 환율: ${formatNumber(data.fx.USDKRW, { maximumFractionDigits: 2 })}원`);
+  } else {
+    tone = 'warn';
+    lines.push('달러 환율을 받지 못했어요. 시트 A열에 CURRENCY:USDKRW 줄을 추가해 주세요.');
+  }
+  if (data.errors.length > 0) {
+    tone = 'warn';
+    lines.push(`가격을 받지 못한 티커 ${data.errors.length}개: ${data.errors.slice(0, 5).join(', ')} — 티커 형식을 확인해 주세요.`);
+  }
+  const missing = [...new Set(holdings.map((h) => h.ticker))]
+    .filter((ticker) => !Object.hasOwn(data.prices, ticker) && !data.errors.includes(ticker));
+  if (missing.length > 0) {
+    tone = 'warn';
+    lines.push(`시트에 없는 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 시트 A열에 추가해 주세요.`);
+  }
+  return { tone, lines };
+}
+
 function displayValue(field, value) {
   if (value == null) return '';
   if (field.money) return formatNumber(value);
@@ -184,6 +210,38 @@ export function render(root, { getState, updateState }) {
     showToast('저장했어요');
   }
 
+  // 시트 주소 아래: [연결 테스트] [연결 가이드 보기] + 결과
+  function connectionTools(control) {
+    const result = el('div', { class: 'connection-result', role: 'status', hidden: true });
+    const show = (tone, lines) => {
+      result.className = `connection-result banner banner-${tone}`;
+      result.replaceChildren(...lines.map((line) => el('p', { text: line })));
+      result.hidden = false;
+    };
+    const testButton = el('button', { type: 'button', class: 'btn btn-small', text: '연결 테스트' });
+    testButton.addEventListener('click', async () => {
+      const check = coerceValue(SETTINGS_SCHEMA.sheetUrl, control.value);
+      if (!check.ok || !check.value) {
+        show(check.ok ? 'warn' : 'danger', [check.ok ? '먼저 시트 웹 앱 주소를 붙여넣어 주세요.' : check.error]);
+        return;
+      }
+      testButton.disabled = true;
+      show('info', ['시트에 연결하는 중…']);
+      try {
+        const data = await testConnection(check.value, getState().settings.sheetUrl);
+        const report = connectionReport(data, getState().holdings);
+        show(report.tone, report.lines);
+      } catch (error) {
+        show('danger', [error.message]);
+      } finally {
+        testButton.disabled = false;
+      }
+    });
+    return el('div', { class: 'connection-tools' },
+      el('div', { class: 'toolbar' }, testButton, el('a', { class: 'btn btn-small', href: '#guide', text: '연결 가이드 보기' })),
+      result);
+  }
+
   function renderField(field, { compact = false } = {}) {
     const value = getState().settings[field.key];
     if (field.kind === 'toggle') {
@@ -194,6 +252,7 @@ export function render(root, { getState, updateState }) {
     const control = createControl(field, value);
     const view = createField({ label: field.label, help: field.help, hint: field.hint, control, suffix: field.suffix, compact });
     if (field.dynamicHint) hintUpdaters.push((settings) => view.setHint(field.dynamicHint(settings)));
+    if (field.extra === 'connection') view.element.append(connectionTools(control));
     control.addEventListener('change', () => commit(field, control.value, view));
     return view.element;
   }

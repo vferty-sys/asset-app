@@ -76,6 +76,7 @@ export function coerceValue(spec, input) {
         return fail('주소 형식이 올바르지 않아요. 복사한 주소 전체를 붙여넣어 주세요.');
       }
       if (url.protocol !== 'https:') return fail('https:// 로 시작하는 주소를 입력해 주세요.');
+      if (spec.pattern && !spec.pattern.test(text)) return fail(spec.patternMessage ?? '주소 형식이 올바르지 않아요.');
       return ok(text);
     }
     case 'yearMonth': {

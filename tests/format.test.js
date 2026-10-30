@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  formatMoney, formatNumber, formatPrice, formatPercent, formatDate, formatYearMonth, pnlClass, EMPTY,
+  formatMoney, formatNumber, formatPrice, formatPercent, formatDate, formatYearMonth, formatQuoteTime, pnlClass, EMPTY,
 } from '../js/format.js';
 
 test('formatMoney 자동 단위: 원 → 만원 → 억원', () => {
@@ -65,6 +65,14 @@ test('날짜 표시', () => {
   assert.equal(formatDate('잘못된 값'), EMPTY);
   assert.equal(formatYearMonth('2044-06'), '2044년 6월');
   assert.equal(formatYearMonth('2044-6'), EMPTY);
+});
+
+test('시세 시각: 오늘이면 시:분, 다른 날이면 월/일까지', () => {
+  const now = new Date(2026, 9, 30, 15, 0);
+  assert.equal(formatQuoteTime(new Date(2026, 9, 30, 10, 5).toISOString(), now), '10:05');
+  assert.equal(formatQuoteTime(new Date(2026, 9, 29, 9, 30).toISOString(), now), '10/29 09:30');
+  assert.equal(formatQuoteTime(null, now), EMPTY);
+  assert.equal(formatQuoteTime('잘못된 값', now), EMPTY);
 });
 
 test('pnlClass', () => {
