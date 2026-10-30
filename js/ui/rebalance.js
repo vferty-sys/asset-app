@@ -14,7 +14,8 @@ import { createField, numberInput, segmented, textInput } from './form.js';
 const MODE_OPTIONS = [['assetClass', '자산군 단위'], ['ticker', '종목 단위']];
 const METHOD_OPTIONS = [['full', '전체 리밸런싱'], ['buyOnly', '매수만으로 맞추기']];
 const ACTION_LABELS = { buy: '매수', sell: '매도', hold: '그대로' };
-const ACTION_BADGES = { buy: 'badge-info', sell: 'badge-warn', hold: '' };
+// 증권사 앱처럼 매수 빨강, 매도 파랑 (손익 색상 설정과 상관없이 고정)
+const ACTION_BADGES = { buy: 'badge-buy', sell: 'badge-sell', hold: '' };
 
 const HELP = {
   rebalance: [

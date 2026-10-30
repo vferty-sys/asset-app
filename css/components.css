@@ -375,6 +375,17 @@ select.input {
   color: var(--primary);
 }
 
+/* 매수·매도: 증권사 앱 관례대로 매수 빨강, 매도 파랑 */
+.badge-buy {
+  background: var(--danger-weak);
+  color: var(--red);
+}
+
+.badge-sell {
+  background: var(--primary-weak);
+  color: var(--blue);
+}
+
 .badge-tiny {
   padding: 0 6px;
   font-size: 0.6875rem;
