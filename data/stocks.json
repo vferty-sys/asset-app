@@ -1,4 +1,4 @@
-{"version":1,"dates":{"kr":"2026-10-31","kr-etf":"2026-10-31","us":"2026-10-31","us-etf":"2026-10-31"},"counts":{"kr":2767,"kr-etf":1183,"us":518,"us-etf":57},"items":[
+{"version":1,"dates":{"kr":"2026-10-31","kr-etf":"2026-10-31","us":"2026-10-31","us-etf":"2026-10-31"},"counts":{"kr":2767,"kr-etf":1183,"us":520,"us-etf":57},"items":[
 {"t":"KOSDAQ:0001A0","n":"덕양에너젠","k":"s","c":"KRW","co":"한국","se":"에너지","a":"성장주","sz":3,"g":"kr"},
 {"t":"KOSDAQ:000250","n":"삼천당제약","k":"s","c":"KRW","co":"한국","se":"헬스케어","a":"성장주","sz":4,"g":"kr"},
 {"t":"KOSDAQ:000440","n":"중앙에너비스","k":"s","c":"KRW","co":"한국","se":"에너지","a":"성장주","sz":2,"g":"kr"},
@@ -4083,6 +4083,7 @@
 {"t":"NASDAQ:RKLB","n":"Rocket Lab","al":["로켓랩"],"k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
 {"t":"NASDAQ:ROP","n":"Roper Technologies","k":"s","c":"USD","co":"미국","se":"기술","a":"성장주","g":"us"},
 {"t":"NASDAQ:ROST","n":"Ross Stores","k":"s","c":"USD","co":"미국","se":"소비재","a":"성장주","g":"us"},
+{"t":"NASDAQ:RXRX","n":"Recursion Pharmaceuticals","al":["리커전 파머슈티컬스","리커전"],"k":"s","c":"USD","co":"미국","se":"헬스케어","a":"성장주","g":"us"},
 {"t":"NASDAQ:SBAC","n":"SBA Communications","k":"s","c":"USD","co":"미국","se":"부동산","a":"기타","g":"us"},
 {"t":"NASDAQ:SBUX","n":"Starbucks","al":["스타벅스"],"k":"s","c":"USD","co":"미국","se":"소비재","a":"성장주","g":"us"},
 {"t":"NASDAQ:SHOP","n":"Shopify","al":["쇼피파이"],"k":"s","c":"USD","co":"기타","se":"기술","a":"성장주","g":"us"},
@@ -4104,6 +4105,7 @@
 {"t":"NASDAQ:TXN","n":"Texas Instruments","al":["텍사스 인스트루먼트"],"k":"s","c":"USD","co":"미국","se":"기술","a":"성장주","g":"us"},
 {"t":"NASDAQ:UAL","n":"United Airlines Holdings","k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
 {"t":"NASDAQ:ULTA","n":"Ulta Beauty","k":"s","c":"USD","co":"미국","se":"소비재","a":"성장주","g":"us"},
+{"t":"NASDAQ:VFS","n":"VinFast Auto","al":["빈패스트"],"k":"s","c":"USD","co":"신흥국","se":"소비재","a":"성장주","g":"us"},
 {"t":"NASDAQ:VRSK","n":"Verisk Analytics","k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
 {"t":"NASDAQ:VRSN","n":"Verisign","k":"s","c":"USD","co":"미국","se":"기술","a":"성장주","g":"us"},
 {"t":"NASDAQ:VRTX","n":"Vertex Pharmaceuticals","al":["버텍스"],"k":"s","c":"USD","co":"미국","se":"헬스케어","a":"성장주","g":"us"},
