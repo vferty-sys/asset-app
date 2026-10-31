@@ -1,0 +1,17 @@
+{
+  "name": "내 자산 한눈에",
+  "short_name": "내 자산",
+  "description": "주식·ETF와 공제회·예적금·연금을 한곳에서 관리하는 개인 자산관리 앱. 데이터는 내 브라우저에만 저장돼요.",
+  "lang": "ko",
+  "dir": "ltr",
+  "start_url": "./#dashboard",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f5f9",
+  "theme_color": "#f3f5f9",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

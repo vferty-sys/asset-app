@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>내 자산 한눈에</title>
+  <meta name="description" content="주식·ETF와 공제회·예적금·연금을 한곳에서 관리하는 개인 자산관리 앱. 데이터는 내 브라우저에만 저장돼요.">
+  <meta name="theme-color" content="#f3f5f9">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
+  <link rel="icon" href="./icons/favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-title" content="내 자산">
+  <meta name="mobile-web-app-capable" content="yes">
+  <script>
+    // 저장된 테마를 CSS보다 먼저 적용해서 새로고침할 때 화면이 깜빡이지 않게 한다.
+    try {
+      var savedTheme = (JSON.parse(localStorage.getItem('assetApp.data') || '{}').settings || {}).theme;
+      if (savedTheme === 'light' || savedTheme === 'dark') document.documentElement.dataset.theme = savedTheme;
+    } catch (e) { /* 저장된 데이터가 없거나 읽을 수 없으면 시스템 설정을 따른다 */ }
+  </script>
+  <link rel="stylesheet" href="./css/base.css">
+  <link rel="stylesheet" href="./css/layout.css">
+  <link rel="stylesheet" href="./css/components.css">
+  <link rel="stylesheet" href="./css/views.css">
+  <script type="module" src="./js/app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#view">본문으로 건너뛰기</a>
+
+  <div class="app">
+    <header class="app-header">
+      <a class="brand" href="#dashboard">
+        <svg class="brand-mark" viewBox="0 0 32 32" aria-hidden="true">
+          <rect width="32" height="32" rx="9" fill="currentColor"/>
+          <path d="M8 21l5-5 4 3 7-8" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span class="brand-name">내 자산 한눈에</span>
+      </a>
+      <div class="header-status" id="price-status"></div>
+      <a class="header-settings" href="#settings" data-tab="settings" aria-label="설정">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+      </a>
+    </header>
+
+    <nav class="tabbar" aria-label="주요 메뉴">
+      <a href="#dashboard" data-tab="dashboard">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        <span>대시보드</span>
+      </a>
+      <a href="#holdings" data-tab="holdings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7M3 13h18"/></svg>
+        <span>보유 종목</span>
+      </a>
+      <a href="#analysis" data-tab="analysis">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9h-9z"/><path d="M15 2.6A9 9 0 0 1 21.4 9H15z"/></svg>
+        <span>분산 분석</span>
+      </a>
+      <a href="#rebalance" data-tab="rebalance">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 20V4M3 8l4-4 4 4M17 4v16M13 16l4 4 4-4"/></svg>
+        <span>리밸런싱</span>
+      </a>
+      <a href="#forecast" data-tab="forecast">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>
+        <span>미래 예측</span>
+      </a>
+      <a href="#others" data-tab="others">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="12" cy="12" r="3.5"/><path d="M12 8.5V7M12 17v-1.5M8.5 12H7M17 12h-1.5"/></svg>
+        <span>기타 자산</span>
+      </a>
+      <a href="#settings" data-tab="settings">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></svg>
+        <span>설정</span>
+      </a>
+    </nav>
+
+    <div class="app-main">
+      <div id="app-banner" class="app-banner" hidden></div>
+      <main id="view" class="view" tabindex="-1"></main>
+      <footer class="disclaimer">이 앱은 투자 권유가 아닌 참고용 도구입니다.</footer>
+    </div>
+  </div>
+
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <noscript><p class="noscript">이 앱을 사용하려면 브라우저에서 자바스크립트를 켜 주세요.</p></noscript>
+</body>
+</html>
