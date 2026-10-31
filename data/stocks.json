@@ -4239,7 +4239,7 @@
 {"t":"NYSE:EXPD","n":"Expeditors International","k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
 {"t":"NYSE:EXR","n":"Extra Space Storage","k":"s","c":"USD","co":"미국","se":"부동산","a":"기타","g":"us"},
 {"t":"NYSE:F","n":"Ford Motor Company","k":"s","c":"USD","co":"미국","se":"소비재","a":"성장주","g":"us"},
-{"t":"NYSE:FCX","n":"Freeport-McMoRan","k":"s","c":"USD","co":"미국","se":"소재","a":"성장주","g":"us"},
+{"t":"NYSE:FCX","n":"Freeport-McMoRan","al":["프리포트 맥모란"],"k":"s","c":"USD","co":"미국","se":"소재","a":"성장주","g":"us"},
 {"t":"NYSE:FDS","n":"FactSet","k":"s","c":"USD","co":"미국","se":"금융","a":"성장주","g":"us"},
 {"t":"NYSE:FDX","n":"FedEx","k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
 {"t":"NYSE:FDXF","n":"FedEx Freight","k":"s","c":"USD","co":"미국","se":"산업재","a":"성장주","g":"us"},
