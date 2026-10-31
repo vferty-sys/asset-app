@@ -11,7 +11,11 @@ import {
 } from './form.js';
 
 const HELP = {
-  balance: '지금까지 쌓인 돈이에요. 공제회·은행 앱에서 확인한 금액과 그 날짜(기준일)를 넣어 주세요.',
+  principal: '지금까지 넣은 돈(원금)이에요. 공제회·은행 앱에서 원금(납입 원금)을 확인해 넣어 주세요.',
+  interest: [
+    '기준일까지 붙은 이자예요. 공제회에 따라 "부가금"이라고도 해요.',
+    '넣어 두면 받을 때 이 이자에도 세금을 매겨서 세후 금액이 더 정확해요. 모르면 비워 두세요(앞으로 붙을 이자에만 세금을 매겨요).',
+  ],
   growth: '해마다 월 납입액을 몇 % 올리는지예요. 납입액이 늘지 않으면 비워 두세요.',
   rates: [
     '1년에 붙는 이자율이에요. 미래는 알 수 없으니 낮음·기준·높음 세 가지로 계산해 봐요.',
@@ -36,7 +40,7 @@ const TAX_HINTS = {
 
 function emptyInput() {
   return {
-    id: '', name: '', type: '공제회', balance: '', baseDate: todayString(), monthlyContribution: '', contributionGrowthRate: '',
+    id: '', name: '', type: '공제회', principal: '', accruedInterest: '', baseDate: todayString(), monthlyContribution: '', contributionGrowthRate: '',
     interestRates: { low: '', base: '', high: '' }, compounding: '월복리', contributionEndDate: '', payoutDate: '',
     applyTax: true, taxRate: String(defaultTaxRate('공제회')),
   };
@@ -50,8 +54,9 @@ export function openOtherAssetForm({ asset = null, updateState }) {
   const nameField = createField({ label: '이름', control: textInput({ value: input.name, placeholder: '예: 행정공제회, OO은행 정기예금', maxlength: 40 }) });
   const typeControl = segmented({ options: OTHER_ASSET_TYPES.map((type) => [type, type]), value: input.type, onChange: (next) => changeType(next) });
   const typeField = createField({ label: '종류', control: typeControl.element, group: true });
-  const balanceField = createField({ label: '현재 적립금', help: HELP.balance, control: numberInput({ value: input.balance, placeholder: '0' }), suffix: '원' });
-  const baseDateField = createField({ label: '적립금 기준일', control: dateInput({ value: input.baseDate }) });
+  const principalField = createField({ label: '원금', help: HELP.principal, control: numberInput({ value: input.principal, placeholder: '0' }), suffix: '원' });
+  const interestField = createField({ label: '지금까지 붙은 이자 (선택)', help: HELP.interest, control: numberInput({ value: input.accruedInterest, placeholder: '0' }), suffix: '원' });
+  const baseDateField = createField({ label: '적립금 기준일', hint: '원금과 이자를 확인한 날이에요.', control: dateInput({ value: input.baseDate }) });
   const monthlyField = createField({ label: '월 납입액 (선택)', control: numberInput({ value: input.monthlyContribution, placeholder: '0' }), suffix: '원' });
   const growthField = createField({ label: '납입액 연 증액률 (선택)', help: HELP.growth, control: textInput({ value: input.contributionGrowthRate, inputmode: 'decimal', placeholder: '0' }), suffix: '%' });
   const ratesField = createScenarioField({ label: '연 이율', help: HELP.rates, values: input.interestRates, hint: '낮음·높음을 비우면 기준과 같은 값으로 계산해요.' });
@@ -62,7 +67,7 @@ export function openOtherAssetForm({ asset = null, updateState }) {
   const taxRateField = createField({ label: '이자 세율', control: textInput({ value: input.taxRate, inputmode: 'decimal' }), suffix: '%' });
 
   const views = {
-    name: nameField, type: typeField, balance: balanceField, baseDate: baseDateField, monthlyContribution: monthlyField,
+    name: nameField, type: typeField, principal: principalField, accruedInterest: interestField, baseDate: baseDateField, monthlyContribution: monthlyField,
     contributionGrowthRate: growthField, interestRates: ratesField, compounding: compoundingField,
     contributionEndDate: endField, payoutDate: payoutField, taxRate: taxRateField,
   };
@@ -76,11 +81,14 @@ export function openOtherAssetForm({ asset = null, updateState }) {
     refresh();
   }
 
-  // 세율 칸과 안내, 월복리면 다음 달 이자 (공제회·은행 앱의 이자와 맞는지 비교용)
+  // 현재 적립금(원금 + 이자), 세율 칸과 안내, 월복리면 다음 달 이자 (공제회·은행 앱의 이자와 맞는지 비교용)
   function refresh() {
+    const principal = parseNumberInput(principalField.control.value);
+    const interest = parseNumberInput(interestField.control.value);
+    const balance = (Number.isFinite(principal) ? principal : 0) + (Number.isFinite(interest) ? interest : 0);
+    interestField.setHint(balance > 0 ? `현재 적립금(원금 + 이자) ${formatMoney(balance, { unit: 'won' })}` : '');
     taxRateField.element.hidden = !taxToggle.control.checked;
     taxRateField.setHint(TAX_HINTS[currentType] ?? TAX_HINTS.기본);
-    const balance = parseNumberInput(balanceField.control.value);
     const rate = parseNumberInput(ratesField.getValues().base);
     const monthlyInterest = compoundingField.control.value === '월복리' && balance > 0 && rate > 0 ? (balance * rate) / 100 / 12 : null;
     compoundingField.setHint(monthlyInterest != null
@@ -89,14 +97,16 @@ export function openOtherAssetForm({ asset = null, updateState }) {
   }
   taxToggle.control.addEventListener('change', refresh);
   compoundingField.control.addEventListener('change', refresh);
-  balanceField.control.addEventListener('input', refresh);
+  principalField.control.addEventListener('input', refresh);
+  interestField.control.addEventListener('input', refresh);
   ratesField.element.addEventListener('input', refresh);
 
   const formId = uid('other-asset-form');
   const form = el('form', { class: 'form', id: formId, novalidate: true },
     nameField.element,
     typeField.element,
-    el('div', { class: 'form-pair' }, balanceField.element, baseDateField.element),
+    el('div', { class: 'form-pair' }, principalField.element, interestField.element),
+    baseDateField.element,
     el('div', { class: 'form-pair' }, monthlyField.element, growthField.element),
     ratesField.element,
     compoundingField.element,
@@ -121,7 +131,8 @@ export function openOtherAssetForm({ asset = null, updateState }) {
       id: input.id,
       name: nameField.control.value,
       type: typeControl.value,
-      balance: balanceField.control.value,
+      principal: principalField.control.value,
+      accruedInterest: interestField.control.value,
       baseDate: baseDateField.control.value,
       monthlyContribution: monthlyField.control.value,
       contributionGrowthRate: growthField.control.value,

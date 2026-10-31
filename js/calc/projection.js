@@ -21,11 +21,13 @@ export function toFutureValue(amount, monthsFromNow, inflationRate) {
 //  단리: 넣은 돈(원금)에만 이자가 붙는다
 // 납입 종료 달까지 납입하고(증액률이 있으면 12개월마다 증액), 그 뒤 수령 달까지는 이자만 붙는다.
 // 수령 달이 지나면 받은 돈을 그대로 들고 있다고 보고 이자를 더 붙이지 않는다.
+// balance는 기준 달의 적립금, accruedInterest는 그중 이미 붙은 이자 (나머지가 원금)
 // 돌려주는 값: 기준 달부터 endMonth까지 달마다 { month, principal(넣은 돈), interest(이자), balance }
 export function simulateSavings({
   startMonth,
   endMonth,
   balance = 0,
+  accruedInterest = 0,
   monthlyContribution = 0,
   growthRate = 0,
   annualRate = 0,
@@ -36,11 +38,11 @@ export function simulateSavings({
   const rate = annualRate / 100 / 12;
   const stopMonth = payoutMonth ?? Infinity;
   const lastContribution = Math.min(contributionEndMonth ?? stopMonth, stopMonth);
-  let principal = balance;
-  let interest = 0;
+  let interest = Math.min(Math.max(0, accruedInterest), balance);
+  let principal = balance - interest;
   let pending = 0;
   let contribution = monthlyContribution;
-  const points = [{ month: startMonth, principal, interest, balance: principal }];
+  const points = [{ month: startMonth, principal, interest, balance }];
 
   for (let month = startMonth + 1; month <= endMonth; month += 1) {
     if (month <= stopMonth) {
@@ -84,8 +86,8 @@ export function yearlySamples(points) {
   return samples;
 }
 
-// 세금을 빼기로 한 항목은 그때까지 붙은 이자에서 세금을 뺀다 (받을 때 한꺼번에 떼는 것으로 단순화).
-// 기준일 전에 붙은 이자는 적립금에 섞여 있어 알 수 없으므로 기준일 뒤의 이자에만 매긴다.
+// 세금을 빼기로 한 항목은 그때까지 붙은 이자 전체(기준일까지 붙은 이자 + 그 뒤 이자)에서
+// 세금을 뺀다 (받을 때 한꺼번에 떼는 것으로 단순화).
 function withInterestTax(points, taxRate) {
   const share = taxRate / 100;
   return points.map((point) => {
@@ -108,6 +110,7 @@ export function projectOtherAsset(asset, { nowMonth, endMonth }) {
       startMonth,
       endMonth: lastMonth,
       balance: asset.balance,
+      accruedInterest: asset.accruedInterest ?? 0,
       monthlyContribution: asset.monthlyContribution,
       growthRate: asset.contributionGrowthRate,
       annualRate: asset.interestRates[scenario],
@@ -142,6 +145,7 @@ export function annuityPayment(balance, annualRate, months) {
 //  startAmount[시나리오]: 받기 시작할 때 월 수령액 (그때의 실제 금액, 세금을 빼기로 했으면 세후)
 //  monthlyAt(달, 시나리오): 그 달에 받는 실제 금액. 물가연동 확정 수령형은 해마다 물가만큼 오른다.
 //  종신은 설정의 기대 수명까지 받는다고 본다 (lifetimeAssumed).
+//  세율은 연금마다 정한 값(pension.taxRate), 없으면 options.taxRate(설정의 기본값)
 export function planPension(pension, {
   birthYear, birthMonth = 1, lifeExpectancy, nowMonth, inflationRate, taxRate, linkedBalance = 0,
 }) {
@@ -154,7 +158,7 @@ export function planPension(pension, {
     ? Math.max(monthIndexAtAge(lifeExpectancy, birthYear, birthMonth), startMonth)
     : scheduledStart + pension.payoutYears * 12;
   const months = Math.max(0, endMonth - startMonth);
-  const keep = pension.applyTax ? 1 - taxRate / 100 : 1;
+  const keep = pension.applyTax ? 1 - (pension.taxRate ?? taxRate) / 100 : 1;
   if (alreadyStarted) warnings.push('이미 받기 시작한 나이라 지금부터 받는다고 계산했어요.');
   if (months === 0) warnings.push('받는 기간이 이미 끝났어요.');
 

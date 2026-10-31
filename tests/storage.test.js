@@ -122,6 +122,14 @@ test('normalizeData: 빠진 항목은 기본값, 잘못된 값은 정리', () =>
   assert.equal(Object.hasOwn(data.settings, 'unknownKey'), false);
 });
 
+test('데이터 정리: 세율이 없던 예전 연금은 설정의 연금 세율 기본값으로 채운다', () => {
+  const data = normalizeData({
+    settings: { pensionTaxRate: 4.4 },
+    pensions: [{ id: 'p1', name: '공무원연금', kind: 'fixed' }, { id: 'p2', name: 'IRP', kind: 'accumulating', taxRate: 3.3 }],
+  });
+  assert.deepEqual(data.pensions.map((pension) => pension.taxRate), [4.4, 3.3]);
+});
+
 test('백업 → 복원 하면 같은 데이터가 나온다', () => {
   const data = createDefaultData(NOW);
   data.settings.birthYear = 1980;

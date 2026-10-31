@@ -34,6 +34,14 @@ function rateRange(rates) {
     : `${pct(rates.low)} / ${pct(rates.base)} / ${pct(rates.high)} (낮음 / 기준 / 높음)`;
 }
 
+// 공제회·예적금 카드의 세금 가정 문구
+function depositTaxNote(asset) {
+  if (!asset.applyTax) return '이자에 붙는 세금은 빼지 않았어요';
+  return asset.accruedInterest > 0
+    ? `이자(지금까지 붙은 이자 포함)에서 세금 ${pct(asset.taxRate)}를 뺐어요`
+    : `앞으로 붙을 이자에서 세금 ${pct(asset.taxRate)}를 뺐어요(지금까지 붙은 이자를 넣으면 그 세금도 계산해요)`;
+}
+
 function stat(label, value, sub, main = false) {
   return el('div', { class: `stat${main ? ' stat-main' : ''}` },
     el('p', { class: 'stat-label', text: label }),
@@ -239,7 +247,7 @@ export function render(root, { getState, subscribe }) {
                 el('td', { text: `${age}세` }),
                 series.map((item) => el('td', { class: 'num', text: money(item.values[index]) })),
                 el('td', { class: 'num', text: money(totals[index]) }))))))),
-          el('p', { class: 'assumption-note', text: `가정: 물가 연 ${pct(s.inflationRate)} · 종신 연금은 기대 수명 ${s.lifeExpectancy}세까지 · 세금 빼기로 한 연금은 연금소득세 ${pct(s.pensionTaxRate)}를 뺀 추정치 · 적립형 연금은 각자 입력한 기준 수익률 · ${viewLabel}` }));
+          el('p', { class: 'assumption-note', text: `가정: 물가 연 ${pct(s.inflationRate)} · 종신 연금은 기대 수명 ${s.lifeExpectancy}세까지 · 세금 빼기로 한 연금은 연금마다 정한 세율을 뺀 추정치 · 적립형 연금은 각자 입력한 기준 수익률 · ${viewLabel}` }));
         pendingCharts.push((Chart) => renderIncomeChart(Chart, canvas, {
           labels: timeline.ages.map((age) => `${age}세`), series, target, gap: gapRange, money, label: `은퇴 후 월 소득: ${summary}`,
         }));
@@ -261,7 +269,7 @@ export function render(root, { getState, subscribe }) {
         const amount = show(plan.startAmount.base, plan.startMonth);
         const details = [
           plan.lifetimeAssumed ? `종신 (기대 수명 ${s.lifeExpectancy}세까지로 계산)` : `${pension.payoutYears}년 동안`,
-          pension.applyTax ? `연금소득세 ${pct(s.pensionTaxRate)}를 뺀 추정치` : '세금 빼기 전 금액',
+          pension.applyTax ? `연금소득세 ${pct(pension.taxRate)}를 뺀 추정치` : '세금 빼기 전 금액',
         ];
         if (pension.kind === 'fixed') {
           details.push(pension.inflationIndexed ? '받는 동안 물가만큼 올라요' : '받는 동안 금액이 그대로예요');
@@ -330,8 +338,9 @@ export function render(root, { getState, subscribe }) {
             `${single ? ' 예상 적립금' : ' 기준(진한 선)과 낮음~높음 범위(옅은 띠)'} · ${viewLabel}${asset.applyTax ? ' · 세후' : ''}`),
           chartFrame(canvas, 200),
           el('div', { class: 'table-wrap' }, keyTable),
-          el('p', { class: 'small', text: `${single ? '' : '기준으로 보면 '}넣은 돈 ${money(show(payoutPoint.principal, lastMonth))} + 이자 ${money(show(payoutPoint.interest, lastMonth))}${payoutPoint.tax > 0 ? ` − 세금 ${money(show(payoutPoint.tax, lastMonth))}` : ''}` }),
-          el('p', { class: 'assumption-note', text: `가정: 연 이율 ${rateRange(asset.interestRates)} · ${asset.compounding}${asset.contributionGrowthRate ? ` · 납입액 해마다 ${pct(asset.contributionGrowthRate)} 증액` : ''} · ${asset.applyTax ? `이자에서 세금 ${pct(asset.taxRate)}를 뺐어요(기준일 뒤에 붙는 이자만)` : '이자에 붙는 세금은 빼지 않았어요'}` }));
+          // 넣은 돈·이자·세금은 공제회·은행 앱과 비교할 수 있게 늘 실제 금액으로
+          el('p', { class: 'small', text: `${single ? '' : '기준으로 보면 '}넣은 돈 ${money(payoutPoint.principal)} + 이자 ${money(payoutPoint.interest)}${payoutPoint.tax > 0 ? ` − 세금 ${money(payoutPoint.tax)}` : ''}${view === 'present' ? ' (실제 금액 기준)' : ''}` }),
+          el('p', { class: 'assumption-note', text: `가정: 연 이율 ${rateRange(asset.interestRates)} · ${asset.compounding}${asset.contributionGrowthRate ? ` · 납입액 해마다 ${pct(asset.contributionGrowthRate)} 증액` : ''} · ${depositTaxNote(asset)}` }));
       });
       root.append(el('section', { class: 'card forecast-section', 'aria-label': '공제회·예적금' },
         el('h2', { class: 'section-title', text: '공제회·예적금 적립금' }),
@@ -339,13 +348,14 @@ export function render(root, { getState, subscribe }) {
     }
 
     // ── 사용한 가정 ──
+    const taxedItems = [...state.pensions, ...state.otherAssets].filter((item) => item.applyTax);
     root.append(el('section', { class: 'card assumptions-card', 'aria-label': '사용한 가정' },
       el('h2', { class: 'section-title', text: '사용한 가정' }),
       el('ul', { class: 'assumption-list' },
         el('li', { text: `물가상승률 연 ${pct(s.inflationRate)}` }),
         el('li', { text: `주식 기대 수익률 연 ${pct(s.stockReturnLow)} / ${pct(s.stockReturnBase)} / ${pct(s.stockReturnHigh)} (낮음 / 기준 / 높음), 매달 ${money(s.stockMonthlyInvestment)} 추가 투자` }),
         el('li', { text: `기대 수명 ${s.lifeExpectancy}세 (종신 연금을 받는 기간)` }),
-        el('li', { text: `연금소득 추정 세율 ${pct(s.pensionTaxRate)} (세금 빼기로 한 연금에만)` }),
+        el('li', { text: taxedItems.length > 0 ? `세율: ${taxedItems.map((item) => `${item.name} ${pct(item.taxRate)}`).join(', ')} (세금 빼기를 켠 항목, 기타 자산에서 바꿀 수 있어요)` : '세금: 빼지 않았어요' }),
         el('li', { text: s.monthlyLivingCost ? `퇴직 후 월 목표 생활비 ${money(s.monthlyLivingCost)} (지금 돈 기준)` : '퇴직 후 월 목표 생활비: 입력 안 함' })),
       el('p', { class: 'muted small' }, '가정은 ', el('a', { href: '#settings', text: '설정' }), '에서 바꿀 수 있어요. 미래는 알 수 없으니 참고용으로만 봐 주세요.')));
 

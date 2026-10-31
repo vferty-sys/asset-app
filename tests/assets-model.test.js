@@ -10,7 +10,7 @@ import {
 const NOW = new Date(2026, 9, 30);
 
 const depositInput = (overrides = {}) => ({
-  name: '행정공제회', type: '공제회', balance: '30,000,000', baseDate: '2026-10-01', monthlyContribution: '500,000',
+  name: '행정공제회', type: '공제회', principal: '24,000,000', accruedInterest: '6,000,000', baseDate: '2026-10-01', monthlyContribution: '500,000',
   contributionGrowthRate: '', interestRates: { low: '3', base: '4', high: '' }, compounding: '월복리',
   contributionEndDate: '2040-12', payoutDate: '2041-06', applyTax: true, taxRate: '3', ...overrides,
 });
@@ -21,10 +21,22 @@ test('공제회·예적금: 정상 입력은 저장할 항목이 되고, 갱신�
   const { id, ...rest } = result.value;
   assert.match(id, /^o_/);
   assert.deepEqual(rest, {
-    name: '행정공제회', type: '공제회', balance: 30_000_000, baseDate: '2026-10-01', monthlyContribution: 500_000,
+    name: '행정공제회', type: '공제회', balance: 30_000_000, accruedInterest: 6_000_000, baseDate: '2026-10-01', monthlyContribution: 500_000,
     contributionGrowthRate: 0, interestRates: { low: 3, base: 4, high: 4 }, compounding: '월복리',
     contributionEndDate: '2040-12', payoutDate: '2041-06', applyTax: true, taxRate: 3, updatedAt: '2026-10-30',
   });
+});
+
+test('공제회·예적금: 원금과 지금까지 붙은 이자를 따로 받아 적립금은 그 합계 (이자는 비워도 된다)', () => {
+  const noInterest = validateOtherAsset(depositInput({ accruedInterest: '' }), { now: NOW });
+  assert.equal(noInterest.ok, true);
+  assert.equal(noInterest.value.balance, 24_000_000);
+  assert.equal(noInterest.value.accruedInterest, 0);
+  assert.match(validateOtherAsset(depositInput({ accruedInterest: '-1' }), { now: NOW }).errors.accruedInterest, /0/);
+  // 입력 화면에는 원금과 이자로 나눠서 보여준다
+  const input = otherAssetToInput(validateOtherAsset(depositInput(), { now: NOW }).value);
+  assert.equal(input.principal, '24000000');
+  assert.equal(input.accruedInterest, '6000000');
 });
 
 test('공제회·예적금 세금: 켜면 세율이 꼭 필요하고, 끄면 세율 칸은 검사하지 않는다', () => {
@@ -41,8 +53,8 @@ test('공제회·예적금 세금: 켜면 세율이 꼭 필요하고, 끄면 세
 });
 
 test('공제회·예적금: 필수 항목과 납입 종료 시점', () => {
-  const empty = validateOtherAsset(depositInput({ name: '', balance: '', baseDate: '', payoutDate: '', interestRates: {} }), { now: NOW });
-  assert.deepEqual(Object.keys(empty.errors).sort(), ['balance', 'baseDate', 'interestRates', 'name', 'payoutDate']);
+  const empty = validateOtherAsset(depositInput({ name: '', principal: '', baseDate: '', payoutDate: '', interestRates: {} }), { now: NOW });
+  assert.deepEqual(Object.keys(empty.errors).sort(), ['baseDate', 'interestRates', 'name', 'payoutDate', 'principal']);
   assert.match(empty.errors.interestRates, /^기준:/);
   const noEnd = validateOtherAsset(depositInput({ contributionEndDate: '' }), { now: NOW });
   assert.match(noEnd.errors.contributionEndDate, /납입 종료 시점/);
@@ -80,16 +92,19 @@ test('공제회·예적금: 저장 데이터 정리 (빠진 값은 기본값)', 
   assert.equal(normalizeOtherAsset({ type: '적금', taxRate: 80 }).taxRate, 15.4);
   assert.equal(normalizeOtherAsset({ type: '공제회', applyTax: false, taxRate: 2.2 }).taxRate, 2.2);
   assert.equal(normalizeOtherAsset({ type: '공제회', applyTax: false }).applyTax, false);
+  // 이자를 따로 넣지 않았던 예전 데이터는 이자 0원(적립금 전부 원금), 이자가 적립금보다 클 수는 없다
+  assert.equal(asset.accruedInterest, 0);
+  assert.equal(normalizeOtherAsset({ balance: 100, accruedInterest: 500 }).accruedInterest, 100);
 });
 
 const fixedInput = (overrides = {}) => ({
   name: '공무원연금', category: '공무원연금', kind: 'fixed', startAge: '65', payoutType: '종신', payoutYears: '',
-  applyTax: true, memo: '', expectedMonthlyAmount: '2,500,000', amountBasis: 'present', inflationIndexed: true, inquiryDate: '2026-10-01',
+  applyTax: true, taxRate: '3.3', memo: '', expectedMonthlyAmount: '2,500,000', amountBasis: 'present', inflationIndexed: true, inquiryDate: '2026-10-01',
   ...overrides,
 });
 const accInput = (overrides = {}) => ({
   name: '연금저축', category: '연금저축', kind: 'accumulating', startAge: '60', payoutType: '기간 지정', payoutYears: '20',
-  applyTax: true, memo: '', linkedAccount: '', balance: '12,000,000', baseDate: '2026-10-01', monthlyContribution: '300,000',
+  applyTax: true, taxRate: '5.5', memo: '', linkedAccount: '', balance: '12,000,000', baseDate: '2026-10-01', monthlyContribution: '300,000',
   contributionEndDate: '2035-12', expectedReturns: { low: '2', base: '4', high: '6' }, ...overrides,
 });
 
@@ -101,6 +116,21 @@ test('확정 수령형 연금: 정상 입력, 금액 기준은 꼭 골라야 한
   assert.equal(result.value.updatedAt, '2026-10-30');
   assert.equal('balance' in result.value, false);
   assert.match(validatePension(fixedInput({ amountBasis: '' }), { now: NOW }).errors.amountBasis, /현재가치인지 미래 금액인지/);
+});
+
+test('연금 세율: 연금마다 따로, 세금을 켜면 꼭 필요하고 끄면 검사하지 않는다', () => {
+  assert.equal(validatePension(fixedInput(), { now: NOW }).value.taxRate, 3.3);
+  assert.equal(validatePension(accInput({ taxRate: '4.4' }), { now: NOW }).value.taxRate, 4.4);
+  assert.match(validatePension(fixedInput({ taxRate: '' }), { now: NOW }).errors.taxRate, /0~50%/);
+  assert.match(validatePension(fixedInput({ taxRate: '51' }), { now: NOW }).errors.taxRate, /0~50%/);
+  // 끄면 비어 있어도 저장되고, 세율은 설정의 기본값으로 둔다
+  const off = validatePension(fixedInput({ applyTax: false, taxRate: '' }), { now: NOW, defaultTaxRate: 5.5 });
+  assert.equal(off.ok, true);
+  assert.equal(off.value.taxRate, 5.5);
+  // 세율이 없던 예전 데이터는 넘겨준 기본값(설정값)으로 채운다
+  assert.equal(normalizePension({ kind: 'fixed' }, { defaultTaxRate: 4.4 }).taxRate, 4.4);
+  assert.equal(normalizePension({ kind: 'fixed', taxRate: 3.3 }, { defaultTaxRate: 4.4 }).taxRate, 3.3);
+  assert.equal(normalizePension({ kind: 'fixed', taxRate: 99 }).taxRate, 5.5);
 });
 
 test('연금: 기간 지정이면 받는 기간이 필요, 이미 받는 나이면 안내', () => {

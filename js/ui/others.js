@@ -17,8 +17,9 @@ function staleBadge(item) {
     : null;
 }
 
+const pct = (value) => `${formatNumber(value, { maximumFractionDigits: 2 })}%`;
+
 function rateText(rates) {
-  const pct = (value) => `${formatNumber(value, { maximumFractionDigits: 2 })}%`;
   return rates.low === rates.base && rates.base === rates.high
     ? `연 ${pct(rates.base)}`
     : `연 ${pct(rates.base)} (낮음 ${pct(rates.low)} ~ 높음 ${pct(rates.high)})`;
@@ -67,7 +68,8 @@ export function render(root, { getState, updateState, subscribe }) {
         el('span', { class: 'asset-item-head' },
           el('span', { class: 'asset-name' }, el('span', { text: asset.name }), el('span', { class: 'badge badge-tiny', text: asset.type }), staleBadge(asset)),
           el('span', { class: 'asset-value num', text: money(asset.balance) })),
-        el('span', { class: 'asset-meta', text: `${formatDate(asset.baseDate)} 기준 · ${rateText(asset.interestRates)} · ${asset.compounding}${asset.applyTax ? ` · 세후 계산(세율 ${formatNumber(asset.taxRate, { maximumFractionDigits: 2 })}%)` : ''}` }),
+        el('span', { class: 'asset-meta', text: `${formatDate(asset.baseDate)} 기준${asset.accruedInterest > 0 ? ` · 원금 ${money(asset.balance - asset.accruedInterest)} + 이자 ${money(asset.accruedInterest)}` : ''}` }),
+        el('span', { class: 'asset-meta', text: `${rateText(asset.interestRates)} · ${asset.compounding}${asset.applyTax ? ` · 세후 계산(세율 ${pct(asset.taxRate)})` : ''}` }),
         el('span', { class: 'asset-meta', text: plan })));
       }));
 
@@ -119,7 +121,7 @@ export function render(root, { getState, updateState, subscribe }) {
                 el('span', { class: 'badge badge-tiny', text: PENSION_KIND_LABELS[pension.kind] }),
                 staleBadge(pension)),
               el('span', { class: 'asset-value num', text: value })),
-            el('span', { class: 'asset-meta', text: `${pension.category} · ${start} · ${term}${pension.applyTax ? ' · 세후 계산' : ''}` }),
+            el('span', { class: 'asset-meta', text: `${pension.category} · ${start} · ${term}${pension.applyTax ? ` · 세후 계산(세율 ${pct(pension.taxRate)})` : ''}` }),
             el('span', { class: 'asset-meta', text: `${detail}${contribution}` })),
           el('span', { class: 'order-buttons' },
             el('button', { type: 'button', class: 'icon-btn', 'aria-label': `${pension.name} 위로`, disabled: index === 0, onClick: () => move(index, -1) }, arrowIcon(true)),

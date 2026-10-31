@@ -3,7 +3,7 @@
 //  적립형(accumulating): 적립금을 굴려 수령 개시 때 월 수령액을 계산한다. 보유 종목 계좌와 연결할 수 있다.
 
 import {
-  AMOUNT_BASES, LINKABLE_ACCOUNTS, PAYOUT_TYPES, PENSION_CATEGORIES, PENSION_KINDS,
+  AMOUNT_BASES, DEFAULT_SETTINGS, LINKABLE_ACCOUNTS, PAYOUT_TYPES, PENSION_CATEGORIES, PENSION_KINDS,
 } from './constants.js';
 import { currentMonthIndex, monthIndexAtAge, parseMonth, todayString } from './dates.js';
 import { createId } from './id.js';
@@ -11,6 +11,9 @@ import { coerceValue, isPlainObject, normalizeScenarioRates, sanitizeObject, val
 
 // 공무원연금·국민연금은 물가에 맞춰 오르는 게 보통이라 기본값을 켠다.
 export const INFLATION_INDEXED_CATEGORIES = Object.freeze(['공무원연금', '국민연금']);
+
+// 연금마다 정하는 세율(%). 처음 값(기본값)은 설정의 '연금 세율 기본값'
+const TAX_RATE_SPEC = { type: 'number', min: 0, max: 50 };
 
 const COMMON_FIELDS = {
   name: { type: 'string', default: '' },
@@ -39,17 +42,26 @@ const ACCUMULATING_FIELDS = {
   contributionEndDate: { type: 'yearMonth', nullable: true, default: null },
 };
 
-export function normalizePension(raw) {
+// defaultTaxRate: 세율이 없던 예전 데이터에 넣을 값 (설정의 연금 세율 기본값)
+export function normalizePension(raw, { defaultTaxRate = DEFAULT_SETTINGS.pensionTaxRate } = {}) {
   const source = isPlainObject(raw) ? raw : {};
   const common = sanitizeObject(COMMON_FIELDS, source);
-  const base = { id: typeof source.id === 'string' && source.id ? source.id : createId('p'), ...common };
+  const taxRate = coerceValue(TAX_RATE_SPEC, source.taxRate);
+  const base = {
+    id: typeof source.id === 'string' && source.id ? source.id : createId('p'),
+    ...common,
+    taxRate: taxRate.ok ? taxRate.value : defaultTaxRate,
+  };
   if (common.kind === 'fixed') return { ...base, ...sanitizeObject(FIXED_FIELDS, source) };
   return { ...base, ...sanitizeObject(ACCUMULATING_FIELDS, source), expectedReturns: normalizeScenarioRates(source.expectedReturns) };
 }
 
 // 입력 화면의 값을 검사해서 저장할 연금을 만든다.
 // options.existing: 다른 연금들 (같은 계좌에 두 연금을 연결하지 않게), birthYear/birthMonth: 이미 받는 나이인지 안내
-export function validatePension(input, { existing = [], birthYear = null, birthMonth = 1, now = new Date() } = {}) {
+// options.defaultTaxRate: 세금을 빼지 않아 세율 칸이 비어 있을 때 넣어 둘 값
+export function validatePension(input, {
+  existing = [], birthYear = null, birthMonth = 1, now = new Date(), defaultTaxRate = DEFAULT_SETTINGS.pensionTaxRate,
+} = {}) {
   const errors = {};
   const warnings = {};
   const fields = {};
@@ -70,6 +82,9 @@ export function validatePension(input, { existing = [], birthYear = null, birthM
   take('applyTax', { type: 'boolean' });
   take('memo', { type: 'string', maxLength: 200 });
   if (fields.payoutType === '기간 지정') take('payoutYears', { type: 'integer', min: 1, max: 60 }, '받는 기간을 1 ~ 60년 사이로 입력해 주세요.');
+  // 세금을 빼지 않을 때는 세율 칸이 숨겨지므로, 비어 있거나 틀려도 기본값으로 둔다
+  const taxRate = coerceValue(TAX_RATE_SPEC, input.taxRate);
+  if (fields.applyTax && !taxRate.ok) errors.taxRate = '세율을 0~50% 사이 숫자로 입력해 주세요. 세금을 빼지 않으려면 스위치를 끄세요.';
 
   if (fields.startAge != null && birthYear) {
     if (monthIndexAtAge(fields.startAge, birthYear, birthMonth) < currentMonthIndex(now)) {
@@ -86,6 +101,7 @@ export function validatePension(input, { existing = [], birthYear = null, birthM
     payoutType: fields.payoutType,
     payoutYears: fields.payoutType === '기간 지정' ? fields.payoutYears : null,
     applyTax: fields.applyTax,
+    taxRate: taxRate.ok ? taxRate.value : defaultTaxRate,
     updatedAt: todayString(now),
     memo: fields.memo ?? '',
   };
@@ -153,6 +169,7 @@ export function pensionToInput(pension) {
     payoutType: pension.payoutType,
     payoutYears: text(pension.payoutYears),
     applyTax: pension.applyTax,
+    taxRate: text(pension.taxRate),
     memo: pension.memo ?? '',
   };
   if (pension.kind === 'fixed') {

@@ -89,13 +89,15 @@ function normalizeTargets(value) {
 // 현재 버전 구조로 맞춘다: 빠진 항목은 기본값으로, 형식이 틀린 값은 버린다.
 export function normalizeData(raw) {
   const source = isPlainObject(raw) ? raw : {};
+  const settings = sanitizeObject(SETTINGS_SCHEMA, source.settings);
   return {
     schemaVersion: SCHEMA_VERSION,
-    holdings: objectList(source.holdings).map(normalizeHolding),
-    otherAssets: objectList(source.otherAssets).map(normalizeOtherAsset),
-    pensions: objectList(source.pensions).map(normalizePension),
+    holdings: objectList(source.holdings).map((holding) => normalizeHolding(holding)),
+    otherAssets: objectList(source.otherAssets).map((asset) => normalizeOtherAsset(asset)),
+    // 세율이 없던 예전 연금은 설정의 연금 세율 기본값으로 채운다
+    pensions: objectList(source.pensions).map((pension) => normalizePension(pension, { defaultTaxRate: settings.pensionTaxRate })),
     targets: normalizeTargets(source.targets),
-    settings: sanitizeObject(SETTINGS_SCHEMA, source.settings),
+    settings,
     snapshots: objectList(source.snapshots),
     meta: sanitizeObject(META_SCHEMA, source.meta),
   };

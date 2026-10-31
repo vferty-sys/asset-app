@@ -31,6 +31,19 @@ test('단리: 넣은 돈에만 이자가 붙는다', () => {
   near(at(points, 24).interest, 240_000);
 });
 
+test('지금까지 붙은 이자를 알면 원금과 이자를 나눠서 시작한다', () => {
+  // 적립금 1,000만원 중 이자 200만원: 단리는 원금 800만원에만 이자가 붙는다
+  const simple = savings({ balance: 10_000_000, accruedInterest: 2_000_000, annualRate: 12, compounding: '단리' });
+  near(at(simple, 0).principal, 8_000_000);
+  near(at(simple, 0).interest, 2_000_000);
+  near(at(simple, 12).interest, 2_000_000 + 8_000_000 * 0.01 * 12);
+  // 복리는 이자에도 이자가 붙으므로 적립금 전체가 불어난다
+  const monthly = savings({ balance: 10_000_000, accruedInterest: 2_000_000, annualRate: 12 });
+  near(at(monthly, 12).balance, 10_000_000 * 1.01 ** 12);
+  near(at(monthly, 12).principal, 8_000_000);
+  near(at(monthly, 12).interest, 10_000_000 * 1.01 ** 12 - 8_000_000);
+});
+
 test('매달 납입(월말): 원금과 이자를 나눠 보여준다', () => {
   const points = savings({ monthlyContribution: 100_000, annualRate: 12, contributionEndMonth: START + 24 });
   const fv = (100_000 * (1.01 ** 12 - 1)) / 0.01;
@@ -114,6 +127,18 @@ test('공제회·예적금 세금: 원금은 그대로 두고 이자에서만 �
   assert.equal(valueAt(projectOtherAsset(asset, { nowMonth: START, endMonth: START + 12 }).low, START + 12).tax, 0);
 });
 
+test('공제회·예적금 세금: 지금까지 붙은 이자를 넣으면 그 이자에도 세금을 매긴다', () => {
+  const asset = {
+    balance: 10_000_000, accruedInterest: 2_000_000, baseDate: '2026-01-15', monthlyContribution: 0, contributionGrowthRate: 0,
+    interestRates: { low: 12, base: 12, high: 12 }, compounding: '월복리', contributionEndDate: null, payoutDate: '2027-01',
+    applyTax: true, taxRate: 3,
+  };
+  const point = valueAt(projectOtherAsset(asset, { nowMonth: START, endMonth: START + 12 }).base, START + 12);
+  const totalInterest = 10_000_000 * 1.01 ** 12 - 8_000_000;
+  near(point.tax, totalInterest * 0.03);
+  near(point.balance, 8_000_000 + totalInterest * 0.97);
+});
+
 test('원리금균등 월 수령액 (r = 0이면 적립금 / n)', () => {
   near(annuityPayment(120_000_000, 0, 240), 500_000);
   const r = 0.005;
@@ -149,6 +174,13 @@ test('확정 수령형(현재가치 기준 금액): 받기 시작할 때 실제 
   // 물가연동: 1년 뒤에는 물가만큼 오른다
   near(plan.monthlyAt(plan.startMonth + 12), plan.startAmount.base * 1.025);
   assert.equal(plan.monthlyAt(plan.startMonth - 1), 0);
+});
+
+test('연금 세율: 연금마다 정한 세율을 쓰고, 없으면 설정의 기본값', () => {
+  const own = planPension(fixed({ taxRate: 3.3 }), PERSON);
+  near(toPresentValue(own.startAmount.base, own.startMonth - START, 2.5), 2_000_000 * 0.967);
+  const fallback = planPension(fixed(), PERSON); // taxRate 없음 → PERSON.taxRate 5.5
+  near(toPresentValue(fallback.startAmount.base, fallback.startMonth - START, 2.5), 2_000_000 * 0.945);
 });
 
 test('확정 수령형(미래 금액 기준): 그대로 쓰고, 현재가치는 물가로 할인', () => {

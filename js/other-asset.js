@@ -7,10 +7,13 @@ import { coerceValue, isPlainObject, normalizeScenarioRates, sanitizeObject, val
 
 const TAX_RATE_SPEC = { type: 'number', min: 0, max: 50 };
 
+// balance: 기준일의 적립금(원금 + 그때까지 붙은 이자), accruedInterest: 그중 이자
+// 이자를 따로 알면 받을 때 전체 이자에 세금을 매길 수 있다.
 const STORED_FIELDS = {
   name: { type: 'string', default: '' },
   type: { type: 'enum', options: OTHER_ASSET_TYPES, default: '기타' },
   balance: { type: 'number', min: 0, default: 0 },
+  accruedInterest: { type: 'number', min: 0, default: 0 },
   baseDate: { type: 'date', nullable: true, default: null },
   monthlyContribution: { type: 'number', min: 0, default: 0 },
   contributionGrowthRate: { type: 'number', min: 0, max: 100, default: 0 },
@@ -35,6 +38,7 @@ export function normalizeOtherAsset(raw) {
     name: fields.name,
     type: fields.type,
     balance: fields.balance,
+    accruedInterest: Math.min(fields.accruedInterest, fields.balance),
     baseDate: fields.baseDate,
     monthlyContribution: fields.monthlyContribution,
     contributionGrowthRate: fields.contributionGrowthRate,
@@ -64,7 +68,8 @@ export function validateOtherAsset(input, { now = new Date() } = {}) {
   else if (name.length > 40) errors.name = '40자 이하로 입력해 주세요.';
 
   take('type', { type: 'enum', options: OTHER_ASSET_TYPES });
-  take('balance', { type: 'number', min: 0 });
+  take('principal', { type: 'number', min: 0 });
+  take('accruedInterest', { type: 'number', min: 0, nullable: true });
   take('baseDate', { type: 'date' }, '적립금 기준일을 입력해 주세요.');
   take('monthlyContribution', { type: 'number', min: 0, nullable: true });
   take('contributionGrowthRate', { type: 'number', min: 0, max: 30, nullable: true });
@@ -107,7 +112,8 @@ export function validateOtherAsset(input, { now = new Date() } = {}) {
       id: input.id || createId('o'),
       name,
       type: fields.type,
-      balance: fields.balance,
+      balance: fields.principal + (fields.accruedInterest ?? 0),
+      accruedInterest: fields.accruedInterest ?? 0,
       baseDate: fields.baseDate,
       monthlyContribution: monthly,
       contributionGrowthRate: fields.contributionGrowthRate ?? 0,
@@ -129,7 +135,8 @@ export function otherAssetToInput(asset) {
     id: asset.id,
     name: asset.name,
     type: asset.type,
-    balance: text(asset.balance),
+    principal: text(asset.balance - asset.accruedInterest),
+    accruedInterest: asset.accruedInterest ? text(asset.accruedInterest) : '',
     baseDate: asset.baseDate ?? '',
     monthlyContribution: asset.monthlyContribution ? text(asset.monthlyContribution) : '',
     contributionGrowthRate: asset.contributionGrowthRate ? text(asset.contributionGrowthRate) : '',

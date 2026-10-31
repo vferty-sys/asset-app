@@ -18,7 +18,7 @@ const KIND_CHOICES = [
 const HELP = {
   startAge: '연금을 받기 시작하는 나이예요. 설정의 출생연도·출생월로 받기 시작하는 달을 계산해요.',
   payoutType: '종신은 평생 받는 연금이에요. 계산할 때는 설정의 기대 수명까지 받는다고 봐요.',
-  applyTax: '연금을 받을 때 떼는 세금을 설정의 연금소득 추정 세율 하나로 단순하게 빼요. 실제 세금과는 다를 수 있어요.',
+  applyTax: '연금을 받을 때 떼는 세금을 아래 세율 하나로 단순하게 빼요. 실제 세금과는 다를 수 있어요.',
   expected: '연금공단·공무원연금공단 등에서 조회한 예상 월 수령액이에요.',
   basis: [
     '현재가치: 물가를 생각해 지금 돈 가치로 바꾼 금액이에요.',
@@ -31,6 +31,8 @@ const HELP = {
     '낮음·높음을 비우면 기준과 같은 값으로 계산해요.',
   ],
 };
+
+const TAX_RATE_HINT = '연금저축·IRP는 받는 나이에 따라 5.5%(70세 전) · 4.4%(70대) · 3.3%(80세부터)예요. 공무원·국민연금은 다른 소득과 합쳐 계산해서 사람마다 달라요.';
 
 function emptyInput(kind) {
   const common = {
@@ -64,8 +66,9 @@ export function openPensionKindChooser(onChoose) {
 // accountValues: { 연금저축: 원화 평가금액, IRP: … } — 계좌 연결 안내용
 export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed', getState, updateState, accountValues = {} }) {
   const isEdit = Boolean(pension);
-  const input = isEdit ? pensionToInput(pension) : emptyInput(kind);
   const { settings } = getState();
+  // 새 연금의 세율은 설정의 '연금 세율 기본값'으로 시작
+  const input = isEdit ? pensionToInput(pension) : { ...emptyInput(kind), taxRate: String(settings.pensionTaxRate) };
   const money = (value) => formatMoney(value, { unit: settings.displayUnit });
   let indexedTouched = isEdit;
 
@@ -76,14 +79,14 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
   const payoutControl = segmented({ options: PAYOUT_TYPES.map((type) => [type, type]), value: input.payoutType, onChange: () => refresh() });
   const payoutField = createField({ label: '받는 방식', help: HELP.payoutType, control: payoutControl.element, group: true });
   const yearsField = createField({ label: '받는 기간', control: textInput({ value: input.payoutYears, inputmode: 'numeric', placeholder: '예: 20' }), suffix: '년' });
-  const taxToggle = createToggleField({
-    label: '세금 빼고 계산', help: HELP.applyTax, checked: input.applyTax,
-    hint: `연금소득 추정 세율 ${settings.pensionTaxRate}%를 빼요. 세율은 설정에서 바꿀 수 있어요.`,
-  });
+  const taxToggle = createToggleField({ label: '세금 빼고 계산', help: HELP.applyTax, checked: input.applyTax });
+  const taxRateField = createField({ label: '연금 세율', hint: TAX_RATE_HINT, control: textInput({ value: input.taxRate, inputmode: 'decimal' }), suffix: '%' });
+  taxToggle.control.addEventListener('change', () => refresh());
   const memoField = createField({ label: '메모 (선택)', control: el('textarea', { class: 'input textarea', rows: '2', maxlength: '200', value: input.memo }) });
 
   const views = {
-    name: nameField, category: categoryField, startAge: startAgeField, payoutType: payoutField, payoutYears: yearsField, memo: memoField,
+    name: nameField, category: categoryField, startAge: startAgeField, payoutType: payoutField, payoutYears: yearsField,
+    taxRate: taxRateField, memo: memoField,
   };
   const kindFields = [];
 
@@ -137,6 +140,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
   // 받는 방식·계좌 연결에 따라 보이는 칸과 안내를 바꾼다
   function refresh() {
     yearsField.element.hidden = payoutControl.value !== '기간 지정';
+    taxRateField.element.hidden = !taxToggle.control.checked;
     const age = parseNumberInput(startAgeField.control.value);
     startAgeField.setHint(settings.birthYear && Number.isInteger(age) && age >= 40 && age <= 100
       ? `${formatMonthIndex(monthIndexAtAge(age, settings.birthYear, settings.birthMonth))}부터 받아요.`
@@ -161,6 +165,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
     el('div', { class: 'form-pair' }, startAgeField.element, payoutField.element),
     yearsField.element,
     taxToggle.element,
+    taxRateField.element,
     memoField.element);
   refresh();
 
@@ -186,6 +191,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
       payoutType: payoutControl.value,
       payoutYears: yearsField.control.value,
       applyTax: taxToggle.control.checked,
+      taxRate: taxRateField.control.value,
       memo: memoField.control.value,
     };
     if (fixedParts) {
@@ -208,6 +214,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
     }
     const result = validatePension(values, {
       existing: state.pensions, birthYear: state.settings.birthYear, birthMonth: state.settings.birthMonth,
+      defaultTaxRate: state.settings.pensionTaxRate,
     });
     Object.entries(views).forEach(([key, view]) => view.setError(result.errors[key] ?? null));
     if (!result.ok) {
