@@ -80,6 +80,7 @@ export const US_EXTRA_STOCKS = [
   ['SNOW', 'Snowflake', ['스노우플레이크'], '기술', '미국'],
   ['NU', 'Nu Holdings', ['누홀딩스'], '금융', '신흥국'],
   ['RXRX', 'Recursion Pharmaceuticals', ['리커전 파머슈티컬스', '리커전'], '헬스케어', '미국'],
+  ['VFS', 'VinFast Auto', ['빈패스트'], '소비재', '신흥국'],
 ];
 
 // S&P500 종목의 한글 이름 (티커 → 별칭)
