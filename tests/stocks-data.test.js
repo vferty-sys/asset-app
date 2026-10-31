@@ -46,5 +46,24 @@ test('종목 목록: 모든 종목이 앱에서 쓸 수 있는 값이고 티커�
     if (item.k === 'e') assert.ok(ETF_SPREADS.includes(item.sp), where);
     if (item.k === 's') assert.ok(typeof item.co === 'string' && typeof item.se === 'string', `개별 주식은 국가·섹터 하나: ${where}`);
     if (item.al) assert.ok(Array.isArray(item.al) && item.al.every((alias) => typeof alias === 'string' && alias), where);
+    if (item.sz !== undefined) assert.ok(Number.isInteger(item.sz) && item.sz > 0 && item.sz < 10, `시가총액 자릿수: ${where}`);
   }
+});
+
+test('종목 목록: 국내·미국 대표 종목이 들어 있고 분류가 맞다', () => {
+  const byTicker = new Map(data.items.map((item) => [item.t, item]));
+  const expect = (ticker, fields) => {
+    const item = byTicker.get(ticker);
+    assert.ok(item, `${ticker} 없음`);
+    for (const [key, value] of Object.entries(fields)) assert.deepEqual(item[key], value, `${ticker} ${key}`);
+  };
+  expect('KRX:005930', { n: '삼성전자', k: 's', c: 'KRW', co: '한국', se: '기술', a: '성장주', g: 'kr' });
+  expect('KRX:005935', { n: '삼성전자우', se: '기술' });
+  expect('KRX:105560', { se: '금융', a: '배당주' });
+  expect('KOSDAQ:196170', { se: '헬스케어', g: 'kr' }); // 알테오젠 (코스닥)
+  expect('KRX:069500', { n: 'KODEX 200', k: 'e', co: '한국', sp: 'market', a: '성장주', g: 'kr-etf' });
+  expect('KRX:360750', { co: '미국', sp: 'market' }); // TIGER 미국S&P500
+  expect('KRX:122630', { sp: 'single' }); // KODEX 레버리지
+  expect('NASDAQ:AAPL', { co: '미국', se: '기술', g: 'us' });
+  assert.ok(data.counts.kr > 2000 && data.counts['kr-etf'] > 600, `국내 개수 ${data.counts.kr}, ${data.counts['kr-etf']}`);
 });

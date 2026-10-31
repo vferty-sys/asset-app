@@ -1,4 +1,4 @@
-// 종목 자동 분류: 거래소 업종(국내 한국거래소·미국 GICS)과 ETF 이름·분류로 국가·섹터·자산군·ETF 분산 정도를 짐작한다.
+// 종목 자동 분류: 업종(국내 네이버 금융 업종·미국 GICS)과 ETF 이름·분류로 국가·섹터·자산군·ETF 분산 정도를 짐작한다.
 // 종목 목록(data/stocks.json)을 만드는 스크립트와 종목 입력 화면이 함께 쓴다. 짐작이라 사용자가 언제든 바꿀 수 있다.
 // 비율(mix)은 { 이름: 퍼센트 } 형태이고, 모르면 null.
 
@@ -24,9 +24,31 @@ export const APPROX_COUNTRY_MIXES = Object.freeze({
   emerging: { 중국: 27, 신흥국: 73 },
 });
 
-// ── 국내 주식: 한국거래소 업종(표준산업분류) → 앱 섹터 ─────────────
-// 앞에서부터 처음 맞는 규칙을 쓴다. 대략적인 대응이라 회사에 따라 맞지 않을 수 있다.
-const KRX_INDUSTRY_RULES = [
+// ── 국내 주식: 네이버 금융 업종 → 앱 섹터 ─────────────────────────
+// 네이버 금융의 업종 이름(79개, GICS와 비슷한 나눔)을 그대로 대응시킨다.
+const KR_INDUSTRY_SECTORS = Object.freeze({
+  반도체와반도체장비: '기술', 디스플레이패널: '기술', 디스플레이장비및부품: '기술', 전자장비와기기: '기술', 핸드셋: '기술',
+  통신장비: '기술', 컴퓨터와주변기기: '기술', 사무용전자제품: '기술', 소프트웨어: '기술', IT서비스: '기술',
+  양방향미디어와서비스: '통신', 게임엔터테인먼트: '통신', 방송과엔터테인먼트: '통신', 광고: '통신', 출판: '통신',
+  다각화된통신서비스: '통신', 무선통신서비스: '통신',
+  은행: '금융', 증권: '금융', 손해보험: '금융', 생명보험: '금융', 카드: '금융', 기타금융: '금융', 창업투자: '금융',
+  제약: '헬스케어', 생물공학: '헬스케어', 생명과학도구및서비스: '헬스케어', 건강관리장비와용품: '헬스케어',
+  건강관리업체및서비스: '헬스케어', 건강관리기술: '헬스케어',
+  자동차: '소비재', 자동차부품: '소비재', 전자제품: '소비재', 가구: '소비재', 가정용기기와용품: '소비재',
+  레저용장비와제품: '소비재', '섬유,의류,신발,호화품': '소비재', '호텔,레스토랑,레저': '소비재', 교육서비스: '소비재',
+  다각화된소비자서비스: '소비재', 백화점과일반상점: '소비재', 인터넷과카탈로그소매: '소비재', 전문소매: '소비재', 판매업체: '소비재',
+  식품: '필수소비재', 음료: '필수소비재', 담배: '필수소비재', 화장품: '필수소비재', 가정용품: '필수소비재', 식품과기본식료품소매: '필수소비재',
+  전기제품: '산업재', 전기장비: '산업재', 기계: '산업재', 조선: '산업재', 우주항공과국방: '산업재', 건설: '산업재', 건축제품: '산업재',
+  복합기업: '산업재', 무역회사와판매업체: '산업재', 상업서비스와공급품: '산업재', 문구류: '산업재', 해운사: '산업재', 항공사: '산업재',
+  항공화물운송과물류: '산업재', 도로와철도운송: '산업재', 운송인프라: '산업재',
+  화학: '소재', 철강: '소재', 비철금속: '소재', 건축자재: '소재', 포장재: '소재', 종이와목재: '소재',
+  석유와가스: '에너지', 에너지장비및서비스: '에너지',
+  전기유틸리티: '유틸리티', 가스유틸리티: '유틸리티', 복합유틸리티: '유틸리티',
+  부동산: '부동산',
+});
+
+// 표에 없는 업종 이름(새로 생기거나 바뀐 이름)은 낱말로 짐작한다. 앞에서부터 처음 맞는 규칙을 쓴다.
+const KR_INDUSTRY_RULES = [
   [/은행|저축기관|보험|신탁|금융|증권|투자|여신|카드/, '금융'],
   [/부동산/, '부동산'],
   [/전기업|가스 제조 및 배관|배관공급|증기|수도|폐기물/, '유틸리티'],
@@ -40,9 +62,10 @@ const KRX_INDUSTRY_RULES = [
   [/자동차|트레일러|의복|섬유|가죽|신발|가구|가정용|소매|도매|상품 중개|숙박|음식점|여행|오락|스포츠|교육|게임|완구|악기|귀금속|판매업|렌탈|임대업/, '소비재'],
 ];
 
-export function sectorFromKrxIndustry(industry) {
-  const text = String(industry ?? '');
-  for (const [pattern, sector] of KRX_INDUSTRY_RULES) {
+export function sectorFromKrIndustry(industry) {
+  const text = String(industry ?? '').trim();
+  if (Object.hasOwn(KR_INDUSTRY_SECTORS, text)) return KR_INDUSTRY_SECTORS[text];
+  for (const [pattern, sector] of KR_INDUSTRY_RULES) {
     if (pattern.test(text)) return sector;
   }
   return '기타';
@@ -85,7 +108,7 @@ const INVERSE = /인버스|곱버스|INVERSE|SHORT|BEAR/i;
 
 const COUNTRY_RULES = [
   [/MSCI ?(WORLD|월드)|선진국|DEVELOPED|월드/i, null, 'world'],
-  [/ACWI|전세계|ALL ?COUNTRY|올월드|올 월드|ALL-?WORLD|글로벌|GLOBAL/i, null, 'allCountry'],
+  [/ACWI|전세계|ALL ?COUNTRY|올월드|올 월드|ALL-?WORLD|글로벌|GLOBAL|TDF/i, null, 'allCountry'],
   [/EAFE|미국 ?제외|EX-?US/i, null, 'developedExUs'],
   [/신흥국|이머징|EMERGING/i, null, 'emerging'],
   [/미국|S&P|나스닥|NASDAQ|다우|DOW|필라델피아|러셀|RUSSELL|\bUS\b|U\.S\./i, { 미국: 100 }],
@@ -93,6 +116,8 @@ const COUNTRY_RULES = [
   [/일본|JAPAN|니케이|NIKKEI|TOPIX|토픽스/i, { 일본: 100 }],
   [/유럽|EURO|유로|독일|GERMANY|DAX|STOXX|영국|프랑스/i, { 유럽: 100 }],
   [/인도|INDIA|니프티|NIFTY|베트남|VIETNAM|인도네시아|INDONESIA|브라질|BRAZIL|라틴|멕시코|대만|TAIWAN/i, { 신흥국: 100 }],
+  // 다른 나라 단서가 없을 때: 국내에만 있는 금리·채권 이름이나 '코리아·한국'이면 한국
+  [/CD\s?(1년)?금리|KOFR|통안|머니마켓|국고채|국공채|전단채|코리아|한국/i, { 한국: 100 }],
 ];
 
 const INDEX_SECTORS = [
@@ -120,11 +145,14 @@ const THEME_SECTORS = [
   [/유틸리티|UTILIT/i, '유틸리티'],
 ];
 
-// meta: 거래소가 준 분류 (있으면 더 정확)
+// meta: 목록이 준 분류 (있으면 더 정확)
 //   market: '국내' | '해외', assetType: '주식' | '채권' | '원자재' | '통화' | '부동산' | '혼합자산' …, index: 기초지수 이름,
-//   ticker: 티커 (분산 정도 짐작에 씀)
+//   broadIndex: 기초지수가 시장 전체 지수인지 (네이버 금융 '국내 시장지수' 분류),
+//   fallbackCountry: 이름에 나라 단서가 없을 때 쓸 나라 (예: 국내 채권 ETF는 '한국'), ticker: 티커 (분산 정도 짐작에 씀)
 // 돌려주는 값: { assetClass, countryMix, sectorMix, spread, approx } — 모르는 항목은 null, approx는 대략값을 썼는지
-export function classifyEtf(name, { market = null, assetType = null, index = '', ticker = '' } = {}) {
+export function classifyEtf(name, {
+  market = null, assetType = null, index = '', broadIndex = false, fallbackCountry = null, ticker = '',
+} = {}) {
   const text = `${name ?? ''} ${index ?? ''}`.trim();
   let approx = false;
 
@@ -136,7 +164,7 @@ export function classifyEtf(name, { market = null, assetType = null, index = '',
   else if (DIVIDEND.test(text)) assetClass = '배당주';
 
   let countryMix = null;
-  if (/금현물|골드|GOLD|은선물|SILVER|원유|WTI|원자재|구리|농산물|COMMODIT/i.test(text)) countryMix = { 기타: 100 };
+  if (assetType === '원자재' || /금현물|골드|GOLD|은선물|SILVER|원유|WTI|원자재|구리|농산물|COMMODIT/i.test(text)) countryMix = { 기타: 100 };
   else if (market === '국내') countryMix = { 한국: 100 };
   else {
     for (const [pattern, mix, approxKey] of COUNTRY_RULES) {
@@ -150,12 +178,14 @@ export function classifyEtf(name, { market = null, assetType = null, index = '',
       break;
     }
     if (!countryMix && market === '해외') countryMix = { 기타: 100 };
+    if (!countryMix && fallbackCountry) countryMix = { [fallbackCountry]: 100 };
   }
 
   let sectorMix = null;
   if (assetClass === '현금성') sectorMix = { 현금성: 100 };
   else if (assetClass === '채권') sectorMix = { 채권: 100 };
   else if (INVERSE.test(text)) sectorMix = { 기타: 100 }; // 떨어질 때 버는 상품이라 업종 비중으로 보기 어렵다
+  else if (assetType === '원자재') sectorMix = { 기타: 100 }; // 금·은·원유는 기업이 아니라 업종이 없다
   else {
     const theme = THEME_SECTORS.find(([pattern]) => pattern.test(text));
     const indexKey = INDEX_SECTORS.find(([pattern]) => pattern.test(text))?.[1];
@@ -166,11 +196,16 @@ export function classifyEtf(name, { market = null, assetType = null, index = '',
     } else if (indexKey) {
       sectorMix = { ...APPROX_SECTOR_MIXES[indexKey] };
       approx = true;
+    } else if (broadIndex && market === '국내') {
+      // 'MSCI Korea', 'KRX300'처럼 이름에 코스피가 없는 국내 시장 지수
+      sectorMix = { ...APPROX_SECTOR_MIXES.kospi200 };
+      approx = true;
     }
   }
 
   // 이름으로 업종·테마형이라 짐작했어도 기초지수가 시장 지수면 시장 전체형
   const byName = guessEtfSpread({ name, ticker });
-  const spread = byName === 'theme' && index && guessEtfSpread({ name: index }) === 'market' ? 'market' : byName;
+  const marketIndex = broadIndex || (index && guessEtfSpread({ name: index }) === 'market');
+  const spread = byName === 'theme' && marketIndex ? 'market' : byName;
   return { assetClass, countryMix, sectorMix, spread, approx };
 }

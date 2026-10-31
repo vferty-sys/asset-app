@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APPROX_COUNTRY_MIXES, APPROX_SECTOR_MIXES, classifyEtf, sectorFromGics, sectorFromKrxIndustry, stockAssetClass,
+  APPROX_COUNTRY_MIXES, APPROX_SECTOR_MIXES, classifyEtf, sectorFromGics, sectorFromKrIndustry, stockAssetClass,
 } from '../js/classify.js';
 import { COUNTRY_OPTIONS, SECTOR_OPTIONS } from '../js/constants.js';
 
@@ -17,7 +17,18 @@ test('대략값 비율은 모두 합계 100이고 앱의 국가·섹터 이름�
   }
 });
 
-test('국내 업종 → 앱 섹터', () => {
+test('국내 업종(네이버 금융) → 앱 섹터', () => {
+  const cases = {
+    반도체와반도체장비: '기술', 'IT서비스': '기술', 양방향미디어와서비스: '통신', 게임엔터테인먼트: '통신',
+    은행: '금융', 생명보험: '금융', 제약: '헬스케어', 생물공학: '헬스케어',
+    자동차: '소비재', 전자제품: '소비재', '섬유,의류,신발,호화품': '소비재', 화장품: '필수소비재', 담배: '필수소비재',
+    전기제품: '산업재', 조선: '산업재', 우주항공과국방: '산업재', 화학: '소재', 철강: '소재',
+    석유와가스: '에너지', 전기유틸리티: '유틸리티', 부동산: '부동산',
+  };
+  for (const [industry, sector] of Object.entries(cases)) assert.equal(sectorFromKrIndustry(industry), sector, industry);
+});
+
+test('국내 업종: 표에 없는 이름은 낱말로 짐작', () => {
   const cases = {
     '반도체 제조업': '기술', '통신 및 방송 장비 제조업': '기술', '소프트웨어 개발 및 공급업': '기술',
     '자료처리, 호스팅, 포털 및 기타 인터넷 정보매개 서비스업': '통신', '전기 통신업': '통신', '오디오물 출판 및 원판 녹음업': '통신',
@@ -28,7 +39,7 @@ test('국내 업종 → 앱 섹터', () => {
     '기초 화학물질 제조업': '소재', '1차 철강 제조업': '소재', '석유 정제품 제조업': '에너지',
     '전기업': '유틸리티', '부동산 임대 및 공급업': '부동산', '알 수 없는 업종': '기타',
   };
-  for (const [industry, sector] of Object.entries(cases)) assert.equal(sectorFromKrxIndustry(industry), sector, industry);
+  for (const [industry, sector] of Object.entries(cases)) assert.equal(sectorFromKrIndustry(industry), sector, industry);
 });
 
 test('미국 GICS 섹터 → 앱 섹터', () => {
@@ -60,6 +71,8 @@ test('ETF 자산군: 현금성 → 채권 → 기타(금·원자재·리츠·인
   // 거래소가 준 기초자산 분류가 있으면 그것도 쓴다
   assert.equal(classifyEtf('KODEX 종합채권(AA-이상)액티브', { assetType: '채권' }).assetClass, '채권');
   assert.equal(classifyEtf('어떤 ETF', { assetType: '원자재' }).assetClass, '기타');
+  const gold = classifyEtf('SOL 국제금', { assetType: '원자재' });
+  assert.deepEqual([gold.countryMix, gold.sectorMix], [{ 기타: 100 }, { 기타: 100 }]);
 });
 
 test('ETF 국가: 국내 시장이면 한국, 해외는 이름으로, 전세계·선진국·신흥국은 대략적인 나눔', () => {
@@ -74,6 +87,16 @@ test('ETF 국가: 국내 시장이면 한국, 해외는 이름으로, 전세계�
   assert.deepEqual(classifyEtf('KODEX 골드선물(H)', { market: '해외' }).countryMix, { 기타: 100 });
   assert.equal(classifyEtf('이름에 단서 없음').countryMix, null);
   assert.deepEqual(classifyEtf('이름에 단서 없음', { market: '해외' }).countryMix, { 기타: 100 });
+  // 국내에만 있는 금리·채권 이름은 한국, TDF는 전세계 대략값
+  assert.deepEqual(classifyEtf('KODEX 머니마켓액티브').countryMix, { 한국: 100 });
+  assert.deepEqual(classifyEtf('TIGER CD1년금리액티브(합성)').countryMix, { 한국: 100 });
+  assert.deepEqual(classifyEtf('KODEX 국고채3년').countryMix, { 한국: 100 });
+  assert.deepEqual(classifyEtf('TIGER 미국달러단기채권액티브').countryMix, { 미국: 100 });
+  assert.deepEqual(classifyEtf('KODEX TDF2050액티브 적격').countryMix, APPROX_COUNTRY_MIXES.allCountry);
+  // 이름에 나라 단서가 없을 때 쓸 나라 (국내 채권 ETF)
+  assert.deepEqual(classifyEtf('KODEX 종합채권(AA-이상)액티브', { assetType: '채권', fallbackCountry: '한국' }).countryMix, { 한국: 100 });
+  assert.deepEqual(classifyEtf('ACE 미국30년국채액티브', { assetType: '채권', fallbackCountry: '한국' }).countryMix, { 미국: 100 });
+  assert.equal(classifyEtf('TIGER 테슬라채권혼합Fn').countryMix, null);
 });
 
 test('ETF 섹터: 테마 이름이면 그 섹터 100%, 시장 지수면 대략적인 업종 비율, 모르면 null', () => {
@@ -98,4 +121,22 @@ test('ETF 분산 정도는 이름으로 짐작한 값 (시장 전체형·업종�
   assert.equal(classifyEtf('KODEX 200').spread, 'market');
   assert.equal(classifyEtf('KODEX 반도체').spread, 'theme');
   assert.equal(classifyEtf('KODEX 레버리지').spread, 'single');
+});
+
+test('국내 시장지수 분류(broadIndex): 이름에 코스피가 없어도 시장 전체형, 업종은 코스피200 대략값', () => {
+  const korea = classifyEtf('TIGER MSCI Korea TR', { market: '국내', broadIndex: true });
+  assert.equal(korea.spread, 'market');
+  assert.deepEqual(korea.sectorMix, APPROX_SECTOR_MIXES.kospi200);
+  assert.equal(korea.approx, true);
+  assert.equal(classifyEtf('TIGER MSCI Korea TR').sectorMix, null);
+  // 레버리지는 시장 지수여도 집중형, 업종은 코스피200 대략값
+  const leverage = classifyEtf('KODEX 레버리지', { market: '국내', broadIndex: true });
+  assert.equal(leverage.spread, 'single');
+  assert.deepEqual(leverage.sectorMix, APPROX_SECTOR_MIXES.kospi200);
+  // 커버드콜은 배당주, 기초가 코스피200이면 시장 전체형
+  const coveredCall = classifyEtf('TIGER 200커버드콜', { market: '국내', broadIndex: true });
+  assert.equal(coveredCall.assetClass, '배당주');
+  assert.equal(coveredCall.spread, 'market');
+  // 테마 이름이 있으면 그 업종
+  assert.deepEqual(classifyEtf('TIGER 반도체TOP10레버리지', { market: '국내', broadIndex: true }).sectorMix, { 기술: 100 });
 });

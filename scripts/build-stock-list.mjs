@@ -2,8 +2,9 @@
 // 매달 GitHub Actions(.github/workflows/update-stock-list.yml)가 실행하고, 직접 실행해도 된다: npm run build:stocks
 //
 // 자료
-//  - 국내 상장회사와 업종: 한국거래소 KIND 상장법인목록
-//  - 국내 전 종목(우선주 포함)·ETF와 그 분류: 한국거래소 정보데이터시스템
+//  - 국내 주식(우선주 포함)과 업종, 코스피·코스닥 구분: 네이버 금융 업종별 시세
+//  - 국내 ETF와 그 분류(시장지수·업종테마·파생·해외·원자재·채권·기타): 네이버 금융 ETF 목록
+//    (한국거래소 KIND는 해외 서버 접속을 막고, 정보데이터시스템은 로그인이 있어야 자료를 줘서 쓰지 않는다)
 //  - 미국: S&P500 구성 종목(GICS 섹터), 나스닥·NYSE 상장 목록(거래소 확인용) — GitHub의 공개 데이터셋
 //  - 많이 사는 미국 ETF·종목과 한글 이름: scripts/stock-extras.mjs
 // 어느 자료를 받지 못하면 그 부분은 지난 목록을 그대로 쓴다 (목록이 통째로 비지 않게).
@@ -13,30 +14,30 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDelimited } from '../js/calc/csv.js';
-import { classifyEtf, sectorFromGics, sectorFromKrxIndustry, stockAssetClass } from '../js/classify.js';
+import { classifyEtf, sectorFromGics, sectorFromKrIndustry, stockAssetClass } from '../js/classify.js';
 import { US_ALIASES, US_ETFS, US_EXTRA_STOCKS } from './stock-extras.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'stocks.json');
 
 const SOURCES = {
-  kind: 'https://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13',
-  krx: 'https://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd',
+  industries: 'https://m.stock.naver.com/api/stocks/industry',
+  etfs: 'https://finance.naver.com/api/sise/etfItemList.nhn?etfType=0&targetColumn=market_sum&sortOrder=desc',
   sp500: 'https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv',
   nasdaq: 'https://raw.githubusercontent.com/datasets/nasdaq-listings/main/data/nasdaq-listed-symbols.csv',
   other: 'https://raw.githubusercontent.com/datasets/nyse-other-listings/main/data/other-listed.csv',
 };
-const KRX_REFERER = 'https://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd?menuId=MDC0201';
 const USER_AGENT = 'Mozilla/5.0 (compatible; asset-app stock list builder)';
 const US_EXCHANGES = { N: 'NYSE', A: 'NYSEAMERICAN', P: 'NYSEARCA', Z: 'BATS' };
+// 한 번에 다 받으면 자료를 주는 쪽에 부담이라 요청 사이를 조금 띄운다
+const PAUSE_MS = 150;
+const pause = () => new Promise((resolve) => setTimeout(resolve, PAUSE_MS));
 
-async function request(url, { method = 'GET', body = undefined, headers = {}, encoding = 'utf-8' } = {}) {
+async function request(url, { headers = {}, encoding = 'utf-8' } = {}) {
   let lastError = null;
   for (let attempt = 1; attempt <= 3; attempt += 1) {
     try {
-      const response = await fetch(url, {
-        method, body, headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(30_000),
-      });
+      const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT, ...headers }, signal: AbortSignal.timeout(30_000) });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       return new TextDecoder(encoding).decode(await response.arrayBuffer());
     } catch (error) {
@@ -53,13 +54,6 @@ async function csvRecords(url) {
   return rows.map(({ cells }) => Object.fromEntries(header.cells.map((name, index) => [name.trim(), (cells[index] ?? '').trim()])));
 }
 
-function decodeHtml(text) {
-  return text
-    .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
-    .trim();
-}
-
 // 비율이 하나뿐이면 이름만, 여러 개면 { 이름: 비율 }, 모르면 null (파일을 작게)
 const compactMix = (mix) => {
   if (!mix) return null;
@@ -67,93 +61,90 @@ const compactMix = (mix) => {
   return names.length === 1 && mix[names[0]] === 100 ? names[0] : mix;
 };
 
-function etfItem({ ticker, name, aliases = [], currency, group, meta }) {
+// 시가총액(억원)의 자릿수: 검색에서 점수가 같을 때 큰 종목을 먼저 보여 주는 데 쓴다.
+// 정확한 금액 대신 자릿수만 적어 두어 매달 갱신해도 거의 바뀌지 않는다. (삼성전자 약 1,000조원 → 7)
+function sizeTier(value) {
+  const amount = Number(String(value ?? '').replace(/,/g, ''));
+  return Number.isFinite(amount) && amount >= 1 ? Math.floor(Math.log10(amount)) : 0;
+}
+const sizeField = (value) => {
+  const tier = sizeTier(value);
+  return tier > 0 ? { sz: tier } : {};
+};
+
+function etfItem({ ticker, name, aliases = [], currency, group, meta, marketCap = null }) {
   const result = classifyEtf(name, { ...meta, ticker });
   return {
     t: ticker, n: name, ...(aliases.length ? { al: aliases } : {}), k: 'e', c: currency,
     co: compactMix(result.countryMix), se: compactMix(result.sectorMix), a: result.assetClass, sp: result.spread,
-    ...(result.approx ? { ax: 1 } : {}), g: group,
+    ...(result.approx ? { ax: 1 } : {}), ...sizeField(marketCap), g: group,
   };
 }
 
 // ── 국내 ─────────────────────────────────────────────
-// KIND 상장법인목록: 회사명·시장구분·종목코드·업종 (EUC-KR로 된 HTML 표)
-async function kindCompanies() {
-  const html = await request(SOURCES.kind, { encoding: 'euc-kr' });
-  const rows = [...html.matchAll(/<tr[^>]*>([\s\S]*?)<\/tr>/gi)]
-    .map((row) => [...row[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map((cell) => decodeHtml(cell[1].replace(/<[^>]+>/g, ''))));
-  const [header, ...body] = rows;
-  const column = (label) => header.findIndex((cell) => cell.includes(label));
-  const [iName, iMarket, iCode, iIndustry] = ['회사명', '시장구분', '종목코드', '업종'].map(column);
-  if ([iName, iMarket, iCode, iIndustry].some((index) => index < 0)) throw new Error('KIND 상장법인목록의 표 모양이 바뀌었어요');
-  return body
-    .filter((cells) => cells.length > iIndustry && cells[iCode])
-    .map((cells) => ({
-      name: cells[iName],
-      market: cells[iMarket],
-      code: /^\d+$/.test(cells[iCode]) ? cells[iCode].padStart(6, '0') : cells[iCode],
-      industry: cells[iIndustry],
-    }));
+// 받은 개수가 이보다 적으면 자료 모양이 바뀐 것으로 보고 지난 목록을 쓴다 (2026년 기준 주식 약 2,800개, ETF 약 1,200개)
+const KR_MIN_STOCKS = 2000;
+const KR_MIN_ETFS = 600;
+// 코스피는 KRX:, 코스닥은 KOSDAQ: (코넥스는 구글 시세가 없어 뺀다)
+const KR_PREFIX = { KOSPI: 'KRX', KOSDAQ: 'KOSDAQ' };
+// '기타' 업종 묶음에는 ETF·ETN만 들어 있어 주식 목록에서는 건너뛴다 (ETF는 따로 받는다)
+const SKIP_INDUSTRIES = ['기타'];
+
+async function naverJson(url) {
+  const json = JSON.parse(await request(url));
+  await pause();
+  return json;
 }
 
-async function krxTable(bld, params) {
-  const text = await request(SOURCES.krx, {
-    method: 'POST',
-    body: new URLSearchParams({ bld, locale: 'ko_KR', csvxls_isNo: 'false', ...params }),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', Referer: KRX_REFERER, 'X-Requested-With': 'XMLHttpRequest' },
-  });
-  const json = JSON.parse(text);
-  const rows = json.OutBlock_1 ?? json.output ?? json.block1;
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error(`${bld}: 빈 응답`);
-  return rows;
-}
-
-const PREFIX = { 유가: 'KRX', 유가증권: 'KRX', KOSPI: 'KRX', 코스닥: 'KOSDAQ', KOSDAQ: 'KOSDAQ' };
-
-// '삼성전자우', '현대차2우B', 'LG화학우' → 본 회사 이름
-const commonName = (name) => name.replace(/\s*\(전환\)$/, '').replace(/\d?우[A-C]?$/, '').trim();
-
+// 네이버 금융 업종 목록과 업종마다 속한 종목 (한 번에 100개씩)
 async function krStocks() {
-  const companies = await kindCompanies();
-  const byCode = new Map(companies.map((company) => [company.code, company]));
-  const byName = new Map(companies.map((company) => [company.name, company]));
+  const { groups } = await naverJson(`${SOURCES.industries}?page=1&pageSize=100`);
+  if (!Array.isArray(groups) || groups.length === 0) throw new Error('업종 목록이 비어 있어요');
   const items = new Map();
-  const add = (code, name, market, industry) => {
-    const prefix = PREFIX[market];
-    if (!prefix) return; // 코넥스 등은 구글 시세가 없어 뺀다
-    const sector = sectorFromKrxIndustry(industry);
-    items.set(code, {
-      t: `${prefix}:${code}`, n: name, k: 's', c: 'KRW', co: '한국', se: sector,
-      a: stockAssetClass({ name, sector, detail: industry }), g: 'kr',
-    });
-  };
-  for (const company of companies) add(company.code, company.name, company.market, company.industry);
-
-  // 우선주처럼 KIND 목록에 따로 없는 주식 (받지 못해도 보통주 목록은 쓴다)
-  try {
-    const securities = await krxTable('dbms/MDC/STAT/standard/MDCSTAT01901', { mktId: 'ALL', share: '1' });
-    for (const row of securities) {
-      const code = row.ISU_SRT_CD;
-      if (!code || items.has(code) || !/주권|주식/.test(row.SECUGRP_NM ?? '주권')) continue;
-      const parent = byCode.get(code) ?? byName.get(commonName(row.ISU_ABBRV));
-      add(code, row.ISU_ABBRV, row.MKT_TP_NM, parent?.industry ?? '');
+  for (const group of groups) {
+    if (SKIP_INDUSTRIES.includes(group.name)) continue;
+    const sector = sectorFromKrIndustry(group.name);
+    for (let page = 1; ; page += 1) {
+      const { stocks = [] } = await naverJson(`${SOURCES.industries}/${group.no}?page=${page}&pageSize=100`);
+      for (const stock of stocks) {
+        const prefix = KR_PREFIX[stock.stockExchangeType?.name];
+        if (stock.stockEndType !== 'stock' || !prefix || !stock.itemCode || !stock.stockName) continue;
+        items.set(stock.itemCode, {
+          t: `${prefix}:${stock.itemCode}`, n: stock.stockName, k: 's', c: 'KRW', co: '한국', se: sector,
+          a: stockAssetClass({ name: stock.stockName, sector, detail: group.name }), ...sizeField(stock.marketValue), g: 'kr',
+        });
+      }
+      if (stocks.length < 100) break;
     }
-  } catch (error) {
-    console.warn(`  · 우선주 목록을 받지 못해 보통주만 넣어요: ${error.message}`);
   }
+  if (items.size < KR_MIN_STOCKS) throw new Error(`국내 주식이 ${items.size}개뿐이에요 (자료 모양이 바뀌었을 수 있어요)`);
   return [...items.values()];
 }
 
+// 네이버 금융 ETF 분류 번호 → classifyEtf에 넘길 정보
+const NAVER_ETF_TABS = {
+  1: { market: '국내', broadIndex: true }, // 국내 시장지수 (코스피200, 코스닥150, MSCI Korea …)
+  2: { market: '국내' }, // 국내 업종·테마
+  3: { market: '국내', broadIndex: true }, // 국내 파생 (대부분 코스피200·코스닥150의 레버리지·인버스·커버드콜)
+  4: { market: '해외' }, // 해외 주식
+  5: { assetType: '원자재' }, // 금·은·원유 …
+  6: { assetType: '채권', fallbackCountry: '한국' }, // 채권 (이름에 나라가 없으면 국내 채권)
+  7: {}, // 기타 (머니마켓, TDF, 혼합 …)
+};
+
 async function krEtfs() {
-  const rows = await krxTable('dbms/MDC/STAT/standard/MDCSTAT04601', { share: '1' });
+  const json = JSON.parse(await request(SOURCES.etfs, { encoding: 'euc-kr' }));
+  const rows = json?.result?.etfItemList;
+  if (!Array.isArray(rows) || rows.length < KR_MIN_ETFS) throw new Error(`ETF가 ${rows?.length ?? 0}개뿐이에요 (자료 모양이 바뀌었을 수 있어요)`);
   return rows
-    .filter((row) => row.ISU_SRT_CD && row.ISU_ABBRV)
+    .filter((row) => row.itemcode && row.itemname)
     .map((row) => etfItem({
-      ticker: `KRX:${row.ISU_SRT_CD}`,
-      name: row.ISU_ABBRV,
+      ticker: `KRX:${row.itemcode}`,
+      name: row.itemname.trim(),
       currency: 'KRW',
       group: 'kr-etf',
-      meta: { market: row.IDX_MKT_CLSS_NM, assetType: row.IDX_ASST_CLSS_NM, index: row.ETF_OBJ_IDX_NM ?? '' },
+      meta: NAVER_ETF_TABS[row.etfTabCode] ?? {},
+      marketCap: row.marketSum,
     }));
 }
 

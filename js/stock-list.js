@@ -31,6 +31,7 @@ export function expandItem(raw) {
     etfSpread: raw.k === 'e' ? raw.sp ?? null : null,
     approx: Boolean(raw.ax),
     group: raw.g ?? '',
+    size: raw.sz ?? 0,
   };
 }
 
@@ -57,6 +58,7 @@ export function loadStockList() {
 const GROUP_ORDER = { kr: 0, 'kr-etf': 1, us: 2, 'us-etf': 3 };
 
 // 종목명(한글 별칭 포함)이나 종목코드로 찾는다. 정확히 같은 코드·이름 → 앞부분이 같은 것 → 들어 있는 것 순서.
+// 점수가 같으면 덩치(시가총액 자릿수)가 큰 것 → 국내 → 짧은 이름 순서 ('삼성' → 삼성전자가 삼성공조보다 먼저).
 export function searchStocks(items, query, { limit = 8 } = {}) {
   const q = normalizeQuery(query);
   if (!q) return [];
@@ -73,6 +75,7 @@ export function searchStocks(items, query, { limit = 8 } = {}) {
     if (score > 0) scored.push({ item, score });
   }
   scored.sort((a, b) => b.score - a.score
+    || (b.item.size ?? 0) - (a.item.size ?? 0)
     || (GROUP_ORDER[a.item.group] ?? 9) - (GROUP_ORDER[b.item.group] ?? 9)
     || a.item.name.length - b.item.name.length
     || a.item.name.localeCompare(b.item.name));

@@ -36,6 +36,18 @@ test('이름으로 찾기: 정확히 같은 이름이 먼저, 그다음 앞부�
   assert.deepEqual(names(searchStocks(ITEMS, 'kodex 200')), ['KODEX 200']);
 });
 
+test('점수가 같으면 시가총액 자릿수(sz)가 큰 종목 먼저', () => {
+  const items = [
+    { t: 'KRX:006660', n: '삼성공조', k: 's', c: 'KRW', co: '한국', se: '소비재', a: '성장주', sz: 2, g: 'kr' },
+    { t: 'KRX:005930', n: '삼성전자', k: 's', c: 'KRW', co: '한국', se: '기술', a: '성장주', sz: 7, g: 'kr' },
+    { t: 'KRX:028260', n: '삼성물산', k: 's', c: 'KRW', co: '한국', se: '산업재', a: '성장주', sz: 5, g: 'kr' },
+  ].map(expandItem);
+  assert.deepEqual(names(searchStocks(items, '삼성')), ['삼성전자', '삼성물산', '삼성공조']);
+  // 점수가 다르면 점수 먼저 (정확히 같은 이름이 덩치보다 앞)
+  assert.deepEqual(names(searchStocks(items, '삼성공조')), ['삼성공조']);
+  assert.equal(ITEMS[0].size, 0);
+});
+
 test('코드·한글 별칭으로도 찾는다', () => {
   assert.deepEqual(names(searchStocks(ITEMS, '005930')), ['삼성전자']);
   assert.deepEqual(names(searchStocks(ITEMS, 'aapl')), ['Apple Inc.']);
