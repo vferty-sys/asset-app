@@ -7,20 +7,25 @@
  *
  * ── 시트 구조 ('시세' 탭, 없으면 첫 번째 탭 / 1행은 제목 줄) ───────────────
  *
- *         A                  B                              C
- *    1    티커               가격                           통화
- *    2    CURRENCY:USDKRW    =GOOGLEFINANCE(A2, "price")                                  ← 달러 환율 (지우지 마세요)
- *    3    KRX:005930         =GOOGLEFINANCE(A3, "price")    =GOOGLEFINANCE(A3, "currency")
- *    4    NASDAQ:QQQ         =GOOGLEFINANCE(A4, "price")    =GOOGLEFINANCE(A4, "currency")
+ *         A                  B                                     C
+ *    1    티커               가격                                  통화
+ *    2    CURRENCY:USDKRW    =GOOGLEFINANCE("CURRENCY:USDKRW")     (비워 둠)        ← 달러 환율 (지우지 마세요)
+ *    3    KRX:005930         =GOOGLEFINANCE(A3, "price")           =GOOGLEFINANCE(A3, "currency")
+ *    4    NASDAQ:QQQ         =GOOGLEFINANCE(A4, "price")           =GOOGLEFINANCE(A4, "currency")
  *    …    (종목마다 한 줄씩)
  *
- *  - A열: 앱에 입력한 티커와 똑같이 적어요. 예) KRX:005930, KOSDAQ:247540, NASDAQ:QQQ, NYSEARCA:SCHD
+ *  - A열: 앱에 입력한 티커와 똑같이, 띄어쓰기 없이 적어요. 예) KRX:005930, KOSDAQ:247540, NASDAQ:QQQ, NYSEARCA:SCHD
+ *    'NYSE: FCX'처럼 띄어쓰기가 들어가거나 소문자로 적으면 'NYSE:FCX'로 고쳐 적어요(onEdit).
  *  - B열·C열: 위 수식. A열에 티커를 적으면 자동으로 채워져요(onEdit). 안 채워지면 위 칸을 복사해 붙여넣으세요.
  *  - "CURRENCY:"로 시작하는 줄은 환율로 처리해요. CURRENCY:USDKRW → fx.USDKRW
+ *    환율은 칸을 가리키거나 "price"를 붙이면 #N/A가 나는 경우가 있어 =GOOGLEFINANCE("CURRENCY:USDKRW")처럼 직접 적어요.
+ *    통화(C열)는 환율 줄에서는 쓰지 않으니 비워 둬요.
+ *  - B열 수식을 직접 고쳐 두었다면 그 수식은 건드리지 않아요. (이 코드가 넣은 수식만 바꿔요)
  *
  * ── 처음 한 번: setupSheet 실행 ──────────────────────────────────────
  *  편집기 위쪽 함수 목록에서 setupSheet를 고르고 [실행]을 누르면
  *  '시세' 탭, 제목 줄, 환율 줄, 예시 종목 두 개가 만들어져요. (이미 있는 내용은 지우지 않아요)
+ *  예전 코드로 만든 시트에서 환율(B2)이 #N/A면, 이 코드로 바꾼 뒤 setupSheet를 한 번 더 실행하면 고쳐져요.
  *
  * ── 웹 앱으로 배포 ─────────────────────────────────────────────
  *  [배포] → [새 배포] → 유형: 웹 앱
@@ -87,8 +92,22 @@ function normalizeTicker_(value) {
   return String(value == null ? '' : value).trim().toUpperCase().replace(/\s+/g, '');
 }
 
+// 가격 수식. 환율은 칸을 가리키거나 "price"를 붙이면 #N/A가 나는 경우가 있어 =GOOGLEFINANCE("CURRENCY:USDKRW")처럼 적는다.
+function priceFormula_(ticker, row) {
+  if (/^CURRENCY:[A-Z]+$/.test(ticker)) return `=GOOGLEFINANCE("${ticker}")`;
+  if (ticker.indexOf(CURRENCY_PREFIX) === 0) return `=GOOGLEFINANCE(A${row})`;
+  return `=GOOGLEFINANCE(A${row}, "price")`;
+}
+
+// 이 코드가 넣은 가격 수식인지 (예전 버전이 환율 줄에 넣던 =GOOGLEFINANCE(A2, "price") 포함). 직접 고친 수식은 그대로 둔다.
+function isAutoPriceFormula_(formula) {
+  return !formula || /^=GOOGLEFINANCE\(\s*(A\d+\s*(,\s*"price"\s*)?|"CURRENCY:[A-Z]+"\s*)\)$/i.test(formula);
+}
+
 function fillFormulas_(sheet, row) {
-  const ticker = normalizeTicker_(sheet.getRange(row, 1).getValue());
+  const tickerCell = sheet.getRange(row, 1);
+  const raw = tickerCell.getValue();
+  const ticker = normalizeTicker_(raw);
   const priceCell = sheet.getRange(row, 2);
   const currencyCell = sheet.getRange(row, 3);
   if (!ticker) {
@@ -96,7 +115,9 @@ function fillFormulas_(sheet, row) {
     currencyCell.clearContent();
     return;
   }
-  if (!priceCell.getFormula()) priceCell.setFormula(`=GOOGLEFINANCE(A${row}, "price")`);
+  // 'NYSE: FCX'처럼 띄어쓰기가 있으면 구글 금융이 #N/A를 내서, 띄어쓰기를 빼고 대문자로 고쳐 적는다
+  if (typeof raw === 'string' && raw !== ticker) tickerCell.setValue(ticker);
+  if (isAutoPriceFormula_(priceCell.getFormula())) priceCell.setFormula(priceFormula_(ticker, row));
   if (ticker.indexOf(CURRENCY_PREFIX) === 0) currencyCell.clearContent();
   else if (!currencyCell.getFormula()) currencyCell.setFormula(`=GOOGLEFINANCE(A${row}, "currency")`);
 }
