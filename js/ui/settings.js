@@ -9,6 +9,8 @@ import { createField, createToggleField, selectInput, textInput } from './form.j
 import { dataSection, installSection } from './data-tools.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}월`]);
+// 시트에서 달러 환율을 받는 줄 (apps-script/Code.gs가 CURRENCY:로 시작하는 줄을 환율로 읽는다)
+const FX_TICKER = 'CURRENCY:USDKRW';
 
 function retirementAgeHint({ birthYear, birthMonth, retirementDate }) {
   if (!birthYear || !retirementDate) return '출생연도도 입력하면 퇴직할 때 나이를 알려드려요.';
@@ -141,15 +143,23 @@ function connectionReport(data, holdings) {
   const count = Object.keys(data.prices).length;
   const lines = [`연결됐어요! 시세 ${count}개를 받았어요.`];
   let tone = 'ok';
+  // 환율 줄이 시트에 있지만 값이 #N/A인 경우와, 줄이 아예 없는 경우를 나눠 안내한다
+  const fxRowFailed = data.errors.includes(FX_TICKER);
+  const priceErrors = data.errors.filter((ticker) => ticker !== FX_TICKER);
   if (data.fx.USDKRW) {
     lines.push(`달러 환율: ${formatNumber(data.fx.USDKRW, { maximumFractionDigits: 2 })}원`);
+  } else if (fxRowFailed) {
+    tone = 'warn';
+    lines.push(`달러 환율 줄(${FX_TICKER})은 시트에 있지만 가격 칸이 #N/A라서 환율을 받지 못했어요. `
+      + 'A열 글자에 띄어쓰기나 빠진 글자가 없는지 확인하고, 맞다면 구글 쪽 문제일 수 있으니 잠시 뒤 다시 해 보세요. '
+      + '그동안은 아래 "달러 환율 (직접 입력)"에 환율을 넣으면 그 값으로 계산해요.');
   } else {
     tone = 'warn';
-    lines.push('달러 환율을 받지 못했어요. 시트 A열에 CURRENCY:USDKRW 줄을 추가해 주세요.');
+    lines.push(`달러 환율을 받지 못했어요. 시트 A열에 ${FX_TICKER} 줄을 추가해 주세요.`);
   }
-  if (data.errors.length > 0) {
+  if (priceErrors.length > 0) {
     tone = 'warn';
-    lines.push(`가격을 받지 못한 티커 ${data.errors.length}개: ${data.errors.slice(0, 5).join(', ')} — 티커 형식을 확인해 주세요.`);
+    lines.push(`가격을 받지 못한 티커 ${priceErrors.length}개: ${priceErrors.slice(0, 5).join(', ')} — 티커 형식(띄어쓰기 없이 NYSE:FCX처럼)을 확인해 주세요.`);
   }
   const missing = [...new Set(holdings.map((h) => h.ticker))]
     .filter((ticker) => !Object.hasOwn(data.prices, ticker) && !data.errors.includes(ticker));

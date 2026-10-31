@@ -133,7 +133,7 @@ export function render(root, { getState, updateState, subscribe }) {
     }
     if (portfolio.missingFxCount > 0) {
       warn(`달러 환율이 없어서 달러 종목 ${portfolio.missingFxCount}개는 합계에서 뺐어요. `,
-        market.mode === 'sheet' ? '시트에 CURRENCY:USDKRW 줄이 있는지 확인하거나 ' : '',
+        market.mode === 'sheet' ? '시트의 CURRENCY:USDKRW 줄에 환율 숫자가 나오는지(#N/A가 아닌지) 확인하거나 ' : '',
         el('a', { href: '#settings', text: '설정에서 환율 입력하기' }));
     }
     if (portfolio.avgPriceCount > 0) {

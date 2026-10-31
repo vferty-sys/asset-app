@@ -24,6 +24,11 @@ class FakeRange {
 
   getValue() { return this.sheet.cell(this.row, this.column).value; }
 
+  setValue(value) {
+    this.sheet.write(this.row, this.column, { value, formula: '' });
+    return this;
+  }
+
   setValues(values) {
     this.forEachCell((row, column, r, c) => this.sheet.write(row, column, { value: values[r][c], formula: '' }));
     return this;
@@ -156,7 +161,8 @@ test('setupSheet: 시세 탭, 제목 줄, 환율 줄, 예시 종목과 수식을
   const sheet = sheets[0];
   assert.equal(sheet.name, '시세');
   assert.deepEqual(sheet.getRange(1, 1, 4, 1).getValues().flat(), ['티커', 'CURRENCY:USDKRW', 'KRX:005930', 'NASDAQ:QQQ']);
-  assert.equal(sheet.cell(2, 2).formula, '=GOOGLEFINANCE(A2, "price")');
+  // 환율은 칸을 가리키거나 "price"를 붙이면 #N/A가 날 수 있어 티커를 수식에 직접 적는다
+  assert.equal(sheet.cell(2, 2).formula, '=GOOGLEFINANCE("CURRENCY:USDKRW")');
   assert.equal(sheet.cell(2, 3).formula, '');
   assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE(A3, "price")');
   assert.equal(sheet.cell(3, 3).formula, '=GOOGLEFINANCE(A3, "currency")');
@@ -183,6 +189,51 @@ test('onEdit: A열에 티커를 적으면 수식을 채우고, 지우면 수식�
   context.onEdit({ range: sheet.getRange(5, 1) });
   assert.equal(sheet.cell(5, 2).formula, '');
   assert.equal(sheet.cell(5, 3).formula, '');
+});
+
+test('setupSheet 다시 실행: 예전 코드가 넣은 환율 수식은 고치고, 직접 고친 수식은 그대로 둔다', () => {
+  const sheet = new FakeSheet('시세', 1, [HEADER]);
+  sheet.write(2, 1, { value: 'CURRENCY:USDKRW', formula: '' });
+  sheet.write(2, 2, { value: '#N/A', formula: '=GOOGLEFINANCE(A2, "price")' });
+  sheet.write(2, 3, { value: '#N/A', formula: '=GOOGLEFINANCE(A2, "currency")' });
+  sheet.write(3, 1, { value: 'CURRENCY:JPYKRW', formula: '' });
+  sheet.write(3, 2, { value: 9.1, formula: '=IFERROR(GOOGLEFINANCE("CURRENCY:JPYKRW"), 9)' });
+  sheet.write(4, 1, { value: 'NYSE:KO', formula: '' });
+  sheet.write(4, 2, { value: 70, formula: '=GOOGLEFINANCE(A4,"price")' });
+  load([sheet]).context.setupSheet();
+  assert.equal(sheet.cell(2, 2).formula, '=GOOGLEFINANCE("CURRENCY:USDKRW")');
+  assert.equal(sheet.cell(2, 3).formula, '', '환율 줄의 통화 칸은 비운다');
+  assert.equal(sheet.cell(3, 2).formula, '=IFERROR(GOOGLEFINANCE("CURRENCY:JPYKRW"), 9)');
+  assert.equal(sheet.cell(4, 2).formula, '=GOOGLEFINANCE(A4, "price")');
+});
+
+test('onEdit: 티커의 띄어쓰기·소문자를 고쳐 적고, 환율 줄로 바꾸면 수식도 바꾼다', () => {
+  const sheet = new FakeSheet('시세', 1, [HEADER]);
+  const { context } = load([sheet]);
+  sheet.write(3, 1, { value: ' nyse: fcx ', formula: '' });
+  context.onEdit({ range: sheet.getRange(3, 1) });
+  assert.equal(sheet.cell(3, 1).value, 'NYSE:FCX');
+  assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE(A3, "price")');
+  assert.equal(sheet.cell(3, 3).formula, '=GOOGLEFINANCE(A3, "currency")');
+
+  sheet.write(3, 1, { value: 'currency: usdkrw', formula: '' });
+  context.onEdit({ range: sheet.getRange(3, 1) });
+  assert.equal(sheet.cell(3, 1).value, 'CURRENCY:USDKRW');
+  assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE("CURRENCY:USDKRW")');
+  assert.equal(sheet.cell(3, 3).formula, '');
+
+  sheet.write(3, 1, { value: 'CURRENCY:USDJPY', formula: '' });
+  context.onEdit({ range: sheet.getRange(3, 1) });
+  assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE("CURRENCY:USDJPY")');
+
+  sheet.write(3, 1, { value: 'NASDAQ:QQQ', formula: '' });
+  context.onEdit({ range: sheet.getRange(3, 1) });
+  assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE(A3, "price")');
+
+  // 숫자로 적힌 칸은 그대로 둔다 (고쳐 적지 않음)
+  sheet.write(4, 1, { value: 5930, formula: '' });
+  context.onEdit({ range: sheet.getRange(4, 1) });
+  assert.equal(sheet.cell(4, 1).value, 5930);
 });
 
 test('onEdit: 여러 줄 붙여넣기는 줄마다, 제목 줄·다른 열·다른 탭은 건드리지 않는다', () => {
