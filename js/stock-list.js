@@ -38,9 +38,10 @@ export function expandItem(raw) {
 let loading = null;
 
 // 한 번만 받아 두고 다시 쓴다. 받지 못하면 다음에 다시 시도한다.
+// 목록이 갱신되면 바로 쓰도록 브라우저에 저장된 사본을 그냥 쓰지 않고 서버에 바뀌었는지 확인한다 (안 바뀌었으면 짧은 응답).
 export function loadStockList() {
   if (!loading) {
-    loading = fetch(LIST_PATH)
+    loading = fetch(LIST_PATH, { cache: 'no-cache' })
       .then((response) => {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         return response.json();
