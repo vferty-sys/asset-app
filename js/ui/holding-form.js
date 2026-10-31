@@ -4,9 +4,11 @@ import {
   ACCOUNTS, ASSET_CLASSES, BROAD_ASSET_CLASSES, COUNTRY_OPTIONS, ETF_SPREADS, ETF_SPREAD_LABELS, SECTOR_OPTIONS,
 } from '../constants.js';
 import { guessEtfSpread, guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
+import { findByTicker, loadStockList } from '../stock-list.js';
 import { parseNumberInput } from '../validate.js';
 import { el, clear, closeIcon, confirmDialog, openModal, showToast, uid } from '../dom.js';
 import { createField, numberInput, segmented, selectInput, textInput } from './form.js';
+import { attachStockPicker } from './stock-picker.js';
 
 const TYPE_OPTIONS = [['stock', '개별 주식'], ['etf', 'ETF']];
 const CURRENCY_OPTIONS = [['KRW', '원화 (KRW)'], ['USD', '달러 (USD)']];
@@ -171,7 +173,8 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   // 저장된 ETF의 분산 정도는 사용자가 정한 값으로 본다 (이름을 바꿔도 다시 짐작하지 않음)
   let spreadTouched = isEdit && input.type === 'etf';
 
-  const nameField = createField({ label: '종목명', control: textInput({ value: input.name, placeholder: '예: 삼성전자', maxlength: 60 }) });
+  const nameHint = isEdit ? '' : '종목명이나 종목코드를 치면 목록에서 고를 수 있어요. 고르면 나머지 칸이 채워져요.';
+  const nameField = createField({ label: '종목명', hint: nameHint, control: textInput({ value: input.name, placeholder: '예: 삼성전자, 애플, KODEX 200', maxlength: 60 }) });
 
   const tickerInput = textInput({ value: input.ticker, placeholder: '예: KRX:005930' });
   tickerInput.spellcheck = false;
@@ -261,6 +264,50 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   }
   [nameField.control, tickerInput, assetClassField.control].forEach((control) => control.addEventListener('change', refreshSpread));
   refreshSpread();
+
+  // ── 종목 목록에서 고르면 티커·종류·통화·국가·섹터·자산군·분산 정도를 한 번에 채운다 ──
+  let stockItems = [];
+  const rowsOf = (mix) => Object.entries(mix).map(([name, percent]) => ({ name, percent: String(percent) }));
+  function applyStock(item) {
+    nameField.control.value = item.name;
+    tickerInput.value = item.ticker;
+    typeControl.value = item.type;
+    countryEditor.setSingle(item.type === 'stock');
+    sectorEditor.setSingle(item.type === 'stock');
+    currencyControl.value = item.currency;
+    applyCurrency(item.currency);
+    currencyTouched = true;
+    if (item.countryMix) {
+      countryEditor.setRows(rowsOf(item.countryMix));
+      countryTouched = true;
+    }
+    if (item.sectorMix) sectorEditor.setRows(rowsOf(item.sectorMix));
+    if (item.assetClass) assetClassField.control.value = item.assetClass;
+    if (item.type === 'etf' && item.etfSpread) {
+      spreadControl.value = item.etfSpread;
+      spreadTouched = true;
+    }
+    refreshSpread();
+    const notes = ['목록에서 골라 티커·종류·통화·국가·섹터·자산군을 채웠어요. 맞는지 확인해 주세요.'];
+    if (item.approx) notes.push('ETF의 국가·섹터 비율은 지수 구성을 바탕으로 한 대략값이에요. 정확한 비율은 운용사 홈페이지에서 볼 수 있어요.');
+    if (!item.countryMix) notes.push('국가는 직접 골라 주세요.');
+    if (!item.sectorMix) notes.push('섹터는 직접 골라 주세요.');
+    nameField.setHint(notes.join(' '));
+  }
+  const picker = attachStockPicker({ input: nameField.control, field: nameField.element, getItems: () => stockItems, onPick: applyStock });
+  nameField.control.addEventListener('input', () => nameField.setHint(nameHint));
+  loadStockList()
+    .then((items) => {
+      stockItems = items;
+      picker.refresh();
+    })
+    .catch(() => nameField.setHint('종목 목록을 불러오지 못했어요. 티커와 나머지 칸을 직접 입력해 주세요.'));
+  // 종목명 없이 티커만 적었으면 목록에서 찾아 채운다
+  tickerInput.addEventListener('change', () => {
+    if (nameField.control.value.trim()) return;
+    const item = findByTicker(stockItems, tickerInput.value);
+    if (item) applyStock(item);
+  });
 
   const views = {
     name: nameField,

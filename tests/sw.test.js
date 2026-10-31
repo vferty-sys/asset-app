@@ -33,6 +33,8 @@ test('서비스 워커의 앱 파일 목록 = 실제 앱 파일 (css·js 전부,
     'manifest.json',
     ...listFiles('css'),
     ...listFiles('js'),
+    // 종목명 자동완성에 쓰는 종목 목록
+    ...listFiles('data'),
     // 시트 연결 가이드 화면이 불러오는 문서와 코드
     /GUIDE_PATH = '\.\/([^']+)'/.exec(read('js/ui/guide.js'))[1],
     /CODE_PATH = '\.\/([^']+)'/.exec(read('js/ui/guide.js'))[1],

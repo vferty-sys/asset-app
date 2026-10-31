@@ -48,9 +48,14 @@ js/format.js        금액·비율·날짜 표시
 js/dates.js         연·월 계산 (나이, 연금 개시 달, 기간 표시)
 js/constants.js     기본 설정값과 기준값
 js/sample-data.js   "샘플 데이터로 둘러보기"용 가상의 데이터
+js/stock-list.js    종목 목록 불러오기·검색 (종목명 자동완성)
+js/classify.js      종목 자동 분류: 업종·ETF 이름으로 국가·섹터·자산군·분산 정도 짐작
 js/install.js       홈 화면에 설치(앱 설치 버튼) 도우미
 js/ui/              탭별 화면, 첫 사용 가이드(onboarding.js), 백업·복원·초기화(data-tools.js)
 apps-script/Code.gs 구글 시트에 붙여넣을 Apps Script 코드
+data/stocks.json    종목 목록 (국내 주식·ETF, 미국 S&P500·인기 ETF) — 직접 고치지 않고 스크립트로 만든다
+scripts/            종목 목록을 만드는 스크립트 (npm run build:stocks)
+.github/workflows/  매달 종목 목록을 새로 만드는 GitHub Actions
 docs/               가이드 문서 (앱 안 '시트 연결 가이드' 화면에도 그대로 보임)
 tests/              단위 테스트
 .nojekyll           GitHub Pages가 파일을 그대로 올리도록 (가이드 .md를 앱에서 읽기 위해 필요)
@@ -65,6 +70,15 @@ tests/              단위 테스트
 
 설정 → 내 데이터에서 백업 파일(JSON)을 내려받고, 다른 기기·브라우저에서 "백업 파일로 복원"으로 옮길 수 있어요.
 백업 파일에는 개인 자산 정보가 들어 있으니 저장소에 올리지 마세요 (`.gitignore`가 `*backup*.json`, `asset-app-*.json`을 막아 둠).
+
+## 종목 목록과 자동 입력
+
+보유 종목을 추가할 때 종목명(한글 이름·종목코드도 됨)을 치면 `data/stocks.json`에서 후보를 보여주고,
+고르면 티커·종류·통화·국가·섹터·자산군·ETF 분산 정도를 채웁니다. 목록은 앱 파일과 함께 올라가 있어서 검색 내용이 밖으로 나가지 않습니다.
+
+- 목록 만들기: `npm run build:stocks` (국내는 네이버 금융의 업종별 종목·ETF 목록, 미국은 S&P500·미국 상장 목록 공개 데이터셋에서 받음)
+- 매달 2일 GitHub Actions(`종목 목록 갱신`)가 새로 만들어 저장합니다. Actions 탭에서 바로 실행할 수도 있어요.
+- 자료를 받지 못한 부분은 지난 목록을 그대로 씁니다. ETF의 업종 비율은 지수 구성을 바탕으로 한 대략값입니다.
 
 ## 앱이 보내는 외부 요청
 
