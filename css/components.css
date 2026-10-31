@@ -539,22 +539,6 @@ select.input {
   }
 }
 
-/* ── 준비 중 화면 ─────────────────────── */
-.placeholder {
-  display: grid;
-  gap: 12px;
-}
-
-.placeholder-summary {
-  font-weight: 600;
-}
-
-.placeholder-list {
-  margin: 0;
-  padding-left: 1.2em;
-  color: var(--text-muted);
-}
-
 .settings-section {
   display: block;
 }

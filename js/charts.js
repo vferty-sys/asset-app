@@ -1,5 +1,5 @@
-// 도넛 차트. Chart.js는 CDN에서 필요할 때만 불러오고(무결성 검사 포함),
-// 불러오지 못하면 차트 없이 옆의 목록만으로도 모든 값을 볼 수 있다.
+// 차트 (도넛, 시나리오, 은퇴 후 월 소득, 총자산 추이). Chart.js는 CDN에서 필요할 때만 불러오고(무결성 검사 포함),
+// 불러오지 못하면 차트 없이 옆의 목록·표만으로도 모든 값을 볼 수 있다.
 
 import { UNCLASSIFIED } from './constants.js';
 import { formatMoneyShort, formatPercentShort } from './format.js';
@@ -206,6 +206,49 @@ export function renderIncomeChart(Chart, canvas, { labels, series, target, gap, 
       },
     },
     plugins: [gapShade, a11yLabel(label)],
+  });
+}
+
+// 총자산 추이: 달마다 투자자산(아래)과 기타 금융자산(위)을 쌓은 막대
+//  막대는 24px까지만, 맨 위 끝만 4px 둥글게, 두 막대 사이는 카드 색 2px 틈
+export function renderTrendChart(Chart, canvas, { labels, invested, others, money, label }) {
+  const bar = { stack: 'total', maxBarThickness: 24, categoryPercentage: 0.7, barPercentage: 0.9 };
+  const roundTop = { topLeft: 4, topRight: 4, bottomLeft: 0, bottomRight: 0 };
+  return new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          ...bar,
+          label: '투자자산',
+          data: invested,
+          backgroundColor: cssVar('series-1'),
+          borderColor: cssVar('surface'),
+          borderWidth: { top: 2 },
+          // 위에 기타 금융자산이 없는 달은 이 막대가 맨 위
+          borderRadius: (context) => (others[context.dataIndex] > 0 ? 0 : roundTop),
+        },
+        { ...bar, label: '기타 금융자산', data: others, backgroundColor: cssVar('series-2'), borderWidth: 0, borderRadius: roundTop },
+      ],
+    },
+    options: {
+      maintainAspectRatio: false,
+      animation: reducedMotion() ? false : { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
+      scales: moneyAxes({ stacked: true }),
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          itemSort: (a, b) => b.datasetIndex - a.datasetIndex,
+          callbacks: {
+            label: (item) => ` ${item.dataset.label} ${money(item.raw)}`,
+            footer: (items) => `총자산 ${money(items.reduce((sum, item) => sum + item.raw, 0))}`,
+          },
+        },
+      },
+    },
+    plugins: [a11yLabel(label)],
   });
 }
 

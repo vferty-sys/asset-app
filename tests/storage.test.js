@@ -162,3 +162,15 @@ test('clearAppData는 이 앱의 키만 지운다', () => {
   assert.equal(backend.getItem(KEY), null);
   assert.equal(backend.getItem('otherApp.data'), 'keep');
 });
+
+test('데이터 정리: 월별 기록은 틀린 것을 버리고 같은 달은 하나만, 달 순서대로', () => {
+  const data = normalizeData({
+    snapshots: [
+      { month: '2026-10', date: '2026-10-05', invested: 100, others: 50 },
+      { month: '잘못', invested: 1 },
+      { month: '2026-09', date: '2026-09-30', invested: 90, others: 40 },
+      { month: '2026-10', date: '2026-10-20', invested: 120, others: 50 },
+    ],
+  });
+  assert.deepEqual(data.snapshots.map((item) => [item.month, item.total]), [['2026-09', 130], ['2026-10', 170]]);
+});

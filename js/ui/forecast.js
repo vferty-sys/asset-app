@@ -3,8 +3,9 @@
 
 import { PENSION_KIND_LABELS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
+import { valueByAccount } from '../calc/totals.js';
 import {
-  coverageYears, incomeGap, incomeTimeline, planPension, projectOtherAsset, retirementProjection, toFutureValue,
+  coverageYears, incomeGap, incomeTimeline, planPensions, projectOtherAsset, retirementProjection, toFutureValue,
   toPresentValue, valueAt, yearlySamples,
 } from '../calc/projection.js';
 import { loadChartLibrary, renderFanChart, renderIncomeChart } from '../charts.js';
@@ -108,24 +109,12 @@ export function render(root, { getState, subscribe }) {
     // 계좌에 연결한 적립형 연금의 종목은 연금으로 계산하므로 주식에서 뺀다 (이중 계산 방지)
     const market = getMarket(state);
     const { rows } = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
-    const accountValues = {};
-    for (const row of rows) {
-      if (row.valueKRW > 0) accountValues[row.holding.account] = (accountValues[row.holding.account] ?? 0) + row.valueKRW;
-    }
+    const accountValues = valueByAccount(rows);
     const linkedAccounts = [...new Set(state.pensions.filter((p) => p.kind === 'accumulating' && p.linkedAccount).map((p) => p.linkedAccount))];
     const stockValue = rows.filter((row) => row.valueKRW > 0 && !linkedAccounts.includes(row.holding.account)).reduce((sum, row) => sum + row.valueKRW, 0);
     const linkedValue = linkedAccounts.reduce((sum, account) => sum + (accountValues[account] ?? 0), 0);
 
-    const plannable = hasPerson ? state.pensions.filter((pension) => pension.startAge != null) : [];
-    const plans = plannable.map((pension) => planPension(pension, {
-      birthYear: s.birthYear,
-      birthMonth: s.birthMonth,
-      lifeExpectancy: s.lifeExpectancy,
-      nowMonth,
-      inflationRate: s.inflationRate,
-      taxRate: s.pensionTaxRate,
-      linkedBalance: accountValues[pension.linkedAccount] ?? 0,
-    }));
+    const plans = planPensions(state.pensions, { settings: s, accountValues, nowMonth });
     const paying = plans.filter((plan) => plan.months > 0);
 
     // ── 퇴직(목표) 시점 종합 ──
@@ -215,7 +204,7 @@ export function render(root, { getState, subscribe }) {
       }
 
       if (paying.length === 0) {
-        section.append(el('p', { class: 'muted', text: plannable.length === 0 ? '연금을 입력하면 나이마다 받는 월 소득을 보여드려요.' : '받을 수 있는 연금이 없어요(받는 기간이 끝났어요).' }),
+        section.append(el('p', { class: 'muted', text: plans.length === 0 ? '연금을 입력하면 나이마다 받는 월 소득을 보여드려요.' : '받을 수 있는 연금이 없어요(받는 기간이 끝났어요).' }),
           el('a', { class: 'btn btn-small', href: '#others', text: '연금 입력하기' }));
       } else {
         const timeline = incomeTimeline(paying, {

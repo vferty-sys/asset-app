@@ -1,5 +1,236 @@
 /* 탭별 화면 스타일 */
 
+/* ── 대시보드 ───────────────────────── */
+.dash-hero {
+  display: grid;
+  gap: 10px;
+}
+
+.hero-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+/* 화면을 여는 사람이 가장 먼저 보는 숫자 하나 (비례 숫자, 좁은 화면에서는 조금 작게) */
+.hero-value {
+  font-size: clamp(2.25rem, 10vw, 3rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+/* 투자자산 : 기타 금융자산 — 8px 가는 막대, 글자 없이 옆 목록이 금액을 알려준다 */
+.split-bar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-2);
+}
+
+.split-bar span {
+  min-width: 2px;
+}
+
+.split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 20px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.9375rem;
+}
+
+.split-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.split-name {
+  color: var(--text-muted);
+}
+
+.split-value {
+  font-weight: 700;
+}
+
+.kpi-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 768px) {
+  .kpi-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.kpi {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+}
+
+.kpi .stat-value {
+  font-size: 1.5rem;
+}
+
+.kpi .stat-value.is-gain {
+  color: var(--gain);
+}
+
+.kpi .stat-value.is-loss {
+  color: var(--loss);
+}
+
+.kpi-link {
+  justify-self: start;
+  margin-top: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.dash-grid {
+  display: grid;
+  gap: 16px;
+}
+
+@media (min-width: 900px) {
+  .dash-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+  }
+}
+
+.dash-health,
+.dash-checks {
+  display: grid;
+  gap: 12px;
+}
+
+.dash-health .score-head {
+  margin-bottom: 0;
+}
+
+.dash-subhead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+}
+
+.dash-alerts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dash-alerts li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.dash-checks .section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.check-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.check-list li {
+  display: grid;
+  gap: 2px;
+  padding-left: 12px;
+  border-left: 3px solid var(--warn);
+}
+
+.check-list a {
+  justify-self: start;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.snapshot-prompt {
+  display: grid;
+  gap: 12px;
+  border-color: var(--primary);
+  background: var(--primary-weak);
+}
+
+.snapshot-prompt-title {
+  font-weight: 700;
+}
+
+@media (min-width: 768px) {
+  .snapshot-prompt {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+.dash-trend {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.trend-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.trend-head .score-head {
+  margin-bottom: 0;
+}
+
+.trend-change {
+  font-size: 0.9375rem;
+}
+
+.trend-change .is-gain {
+  color: var(--gain);
+}
+
+.trend-change .is-loss {
+  color: var(--loss);
+}
+
+.snapshot-table th[scope="row"] {
+  color: var(--text);
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.gauge.gauge-small {
+  max-width: 200px;
+}
+
+.gauge-small .gauge-value {
+  font-size: 2.25rem;
+}
+
 /* ── 요약 숫자 카드 ───────────────────── */
 .summary-card {
   display: grid;

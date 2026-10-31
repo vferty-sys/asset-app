@@ -8,6 +8,7 @@ import { isPlainObject, sanitizeObject } from './validate.js';
 import { normalizeHolding } from './holding.js';
 import { normalizeOtherAsset } from './other-asset.js';
 import { normalizePension } from './pension.js';
+import { normalizeSnapshots } from './snapshot.js';
 
 // 데이터 구조를 바꿀 때마다 1씩 올리고 MIGRATIONS에 변환 함수를 추가한다.
 export const SCHEMA_VERSION = 1;
@@ -98,7 +99,7 @@ export function normalizeData(raw) {
     pensions: objectList(source.pensions).map((pension) => normalizePension(pension, { defaultTaxRate: settings.pensionTaxRate })),
     targets: normalizeTargets(source.targets),
     settings,
-    snapshots: objectList(source.snapshots),
+    snapshots: normalizeSnapshots(source.snapshots),
     meta: sanitizeObject(META_SCHEMA, source.meta),
   };
 }

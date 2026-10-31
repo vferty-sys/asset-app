@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  annuityPayment, coverageYears, incomeGap, incomeTimeline, planPension, projectOtherAsset, projectStocks,
-  retirementProjection, simulateSavings, toFutureValue, toPresentValue, valueAt, yearlySamples,
+  annuityPayment, coverageYears, incomeGap, incomeTimeline, pensionSummary, planPension, planPensions, projectOtherAsset,
+  projectStocks, retirementProjection, simulateSavings, toFutureValue, toPresentValue, valueAt, yearlySamples,
 } from '../js/calc/projection.js';
 import { monthIndexOf, toYearMonth } from '../js/dates.js';
 
@@ -238,6 +238,31 @@ test('적립형 계좌 연결: 그 계좌 보유 종목 금액을 적립금으�
   const empty = planPension(accumulating({ linkedAccount: 'IRP', balance: 0, baseDate: null }), { ...PERSON, linkedBalance: 0 });
   assert.equal(empty.startAmount.base, 0);
   assert.match(empty.warnings.join(), /IRP 계좌에 보유 종목이 없어서/);
+});
+
+const SETTINGS = { birthYear: 1970, birthMonth: 1, lifeExpectancy: 90, inflationRate: 2.5, pensionTaxRate: 5.5 };
+
+test('연금 수령 계획 목록: 출생연도가 없으면 빈 목록, 개시 연령이 없는 연금은 빼고, 연결 계좌 금액을 적립금으로', () => {
+  const pensions = [fixed(), fixed({ id: 'x', startAge: null }), accumulating({ linkedAccount: 'IRP', balance: 0, baseDate: null })];
+  assert.deepEqual(planPensions(pensions, { settings: { ...SETTINGS, birthYear: null }, nowMonth: START }), []);
+  const plans = planPensions(pensions, { settings: SETTINGS, accountValues: { IRP: 6_000_000 }, nowMonth: START });
+  assert.deepEqual(plans.map((plan) => plan.id), ['f', 'a']);
+  near(plans[1].balanceAtStart.base, 6_000_000);
+});
+
+test('예상 월 연금액 요약: 받을 연금의 시작 월 수령액을 현재가치로 더하고, 가장 먼저 시작하는 연금', () => {
+  const plans = planPensions([
+    fixed({ id: 'late', name: '공무원연금', startAge: 65 }),
+    fixed({ id: 'early', name: '국민연금', startAge: 63, amountBasis: 'future', inflationIndexed: false, applyTax: false, expectedMonthlyAmount: 1_000_000 }),
+    fixed({ id: 'ended', name: '끝난 연금', startAge: 40, payoutType: '기간 지정', payoutYears: 5 }),
+  ], { settings: SETTINGS, nowMonth: START });
+  const summary = pensionSummary(plans, { nowMonth: START, inflationRate: 2.5 });
+  assert.equal(summary.count, 2);
+  assert.equal(summary.first.id, 'early');
+  const early = plans.find((plan) => plan.id === 'early');
+  // 현재가치 기준 조회액(세후) 200만원 × 0.945 + 미래 금액 100만원을 지금 돈으로
+  near(summary.monthlyTotal, 2_000_000 * 0.945 + toPresentValue(1_000_000, early.startMonth - START, 2.5));
+  assert.deepEqual(pensionSummary([], { nowMonth: START, inflationRate: 2.5 }), { count: 0, monthlyTotal: 0, first: null });
 });
 
 test('은퇴 후 월 소득 타임라인: 나이마다 연금별 월 수령액이 쌓인다', () => {

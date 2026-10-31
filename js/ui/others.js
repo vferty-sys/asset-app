@@ -2,6 +2,7 @@
 
 import { PENSION_KIND_LABELS, STALE_AFTER_DAYS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
+import { valueByAccount } from '../calc/totals.js';
 import { formatMonthIndex, isOlderThan, monthIndexAtAge } from '../dates.js';
 import { getMarket, subscribeMarket } from '../market.js';
 import { el, clear, svg } from '../dom.js';
@@ -32,13 +33,7 @@ function arrowIcon(up) {
 // 보유 종목의 계좌별 원화 평가금액 (적립형 연금 계좌 연결용)
 export function accountValuesOf(state) {
   const market = getMarket(state);
-  const { rows } = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
-  const values = {};
-  for (const row of rows) {
-    if (row.valueKRW == null) continue;
-    values[row.holding.account] = (values[row.holding.account] ?? 0) + row.valueKRW;
-  }
-  return values;
+  return valueByAccount(valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate }).rows);
 }
 
 export function render(root, { getState, updateState, subscribe }) {

@@ -224,6 +224,32 @@ export function planPension(pension, {
 
 // ── 은퇴 후 월 소득 타임라인 (5-5) ───────────────────
 // 나이마다(그해 생일 달 기준) 연금별 월 수령액. view: 'future'(그때 실제 금액) | 'present'(지금 돈 가치)
+// 설정으로 연금마다 수령 계획을 만든다. 출생연도가 없으면 계산할 수 없어 빈 목록, 개시 연령이 없는 연금은 뺀다.
+// accountValues: 계좌별 보유 종목 평가금액 (계좌에 연결한 적립형 연금의 적립금)
+export function planPensions(pensions, { settings, accountValues = {}, nowMonth }) {
+  if (!settings.birthYear) return [];
+  return pensions
+    .filter((pension) => pension.startAge != null)
+    .map((pension) => planPension(pension, {
+      birthYear: settings.birthYear,
+      birthMonth: settings.birthMonth,
+      lifeExpectancy: settings.lifeExpectancy,
+      nowMonth,
+      inflationRate: settings.inflationRate,
+      taxRate: settings.pensionTaxRate,
+      linkedBalance: accountValues[pension.linkedAccount] ?? 0,
+    }));
+}
+
+// 예상 월 연금액 요약 (대시보드): 받을 연금마다 받기 시작할 때의 월 수령액(기준)을 현재가치로 바꿔 더한다.
+// first: 가장 먼저 시작하는 연금
+export function pensionSummary(plans, { nowMonth, inflationRate }) {
+  const paying = plans.filter((plan) => plan.months > 0);
+  const monthlyTotal = paying.reduce((sum, plan) => sum + toPresentValue(plan.startAmount.base, plan.startMonth - nowMonth, inflationRate), 0);
+  const first = paying.reduce((earliest, plan) => (earliest && earliest.startMonth <= plan.startMonth ? earliest : plan), null);
+  return { count: paying.length, monthlyTotal, first };
+}
+
 export function incomeTimeline(plans, {
   birthYear, birthMonth = 1, fromAge, toAge, nowMonth, inflationRate, view = 'future', scenario = 'base',
 }) {
