@@ -2,10 +2,12 @@
 
 import { APP_NAME, STORAGE_KEYS } from './constants.js';
 import { pickStorageBackend } from './storage.js';
-import { initState, reloadState, getState, updateState, subscribe } from './state.js';
+import { initState, reloadState, getState, updateState, subscribe, isPersistEnabled } from './state.js';
 import { initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
+import { initInstall } from './install.js';
 import { el, clear, closeAllModals, showToast } from './dom.js';
 import { mountPriceStatus } from './ui/price-status.js';
+import { clearSample, openGuide } from './ui/data-tools.js';
 import * as dashboard from './ui/dashboard.js';
 import * as holdings from './ui/holdings.js';
 import * as analysis from './ui/analysis.js';
@@ -126,12 +128,44 @@ function watchPrices() {
   });
 }
 
-function showStartupBanner(status, persistent) {
-  const message = persistent ? STARTUP_MESSAGES[status] : '이 브라우저에서는 데이터를 저장할 수 없어요(사생활 보호 모드 등). 창을 닫으면 입력한 내용이 사라져요.';
+// 화면 위 안내: 시작할 때 생긴 저장소 문제, 샘플 데이터로 둘러보는 중
+function mountBanners(startupMessage) {
   const holder = document.getElementById('app-banner');
-  if (!message || !holder) return;
-  holder.replaceChildren(el('div', { class: 'banner banner-warn', role: 'status', text: message }));
-  holder.hidden = false;
+  if (!holder) return;
+  let sampleShown = null;
+  const draw = () => {
+    const sample = getState().meta.sample;
+    if (sample === sampleShown) return;
+    sampleShown = sample;
+    const items = [];
+    if (startupMessage) items.push(el('div', { class: 'banner banner-warn', role: 'status', text: startupMessage }));
+    if (sample) {
+      items.push(el('div', { class: 'banner banner-info sample-banner', role: 'status' },
+        el('span', { text: '샘플 데이터로 둘러보는 중이에요. 마음껏 바꿔 봐도 돼요.' }),
+        el('button', { type: 'button', class: 'btn btn-small', text: '샘플 지우고 내 데이터로 시작', onClick: () => clearSample(context) })));
+    }
+    holder.replaceChildren(...items);
+    holder.hidden = items.length === 0;
+  };
+  draw();
+  subscribe(draw);
+}
+
+// 처음 왔고 아직 아무것도 입력하지 않았으면 첫 사용 가이드를 띄운다.
+function maybeShowGuide() {
+  const state = getState();
+  const empty = state.holdings.length + state.otherAssets.length + state.pensions.length === 0;
+  if (!state.meta.onboardingDone && empty && isPersistEnabled()) openGuide(context);
+}
+
+// 오프라인에서도 열리게 앱 파일을 저장해 두는 서비스 워커 (https 또는 localhost에서만)
+function registerServiceWorker() {
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      // 등록하지 못해도 앱은 그대로 쓸 수 있다 (오프라인으로만 못 열 뿐).
+    });
+  });
 }
 
 function start() {
@@ -140,7 +174,9 @@ function start() {
     backend,
     onSaveError: () => showToast('저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.', 'danger', 4000),
   });
-  showStartupBanner(result.status, persistent);
+  mountBanners(persistent
+    ? STARTUP_MESSAGES[result.status]
+    : '이 브라우저에서는 데이터를 저장할 수 없어요(사생활 보호 모드 등). 창을 닫으면 입력한 내용이 사라져요.');
 
   applyAppearance(getState().settings);
   subscribe((state) => applyAppearance(state.settings));
@@ -158,7 +194,10 @@ function start() {
     renderView(currentViewId() ?? DEFAULT_VIEW);
   });
 
+  initInstall();
   route();
+  maybeShowGuide();
+  registerServiceWorker();
 }
 
 start();

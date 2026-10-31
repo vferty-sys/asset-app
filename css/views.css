@@ -1549,3 +1549,125 @@
 .csv-messages.is-error {
   color: var(--danger);
 }
+
+/* ── 첫 사용 가이드 ─────────────────────── */
+.onboarding {
+  display: grid;
+  gap: 16px;
+}
+
+.onboarding-lead {
+  font-weight: 600;
+}
+
+.onboarding-steps {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboarding-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.step-number {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--primary-weak);
+  color: var(--primary);
+  font-weight: 800;
+}
+
+.step-body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.step-title {
+  font-weight: 700;
+}
+
+.step-text {
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+.step-link {
+  justify-self: start;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.onboarding-note {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* ── 설정: 내 데이터 · 홈 화면에 추가 ───────── */
+.data-section {
+  display: grid;
+  gap: 16px;
+}
+
+.data-block {
+  display: grid;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.data-title {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.danger-zone .data-title {
+  color: var(--danger);
+}
+
+.install-steps {
+  display: grid;
+  gap: 4px;
+  margin: 10px 0 0;
+  padding-left: 1.1em;
+  color: var(--text-muted);
+  font-size: 0.9375rem;
+}
+
+/* 샘플 데이터 안내 (모든 화면 위) */
+.sample-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+/* 이 기기에서 데이터를 지운 뒤: 앱을 가리는 화면 */
+.wiped-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: var(--bg);
+}
+
+.wiped-card {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 440px);
+}

@@ -737,6 +737,7 @@ select.input {
 
 .modal-foot {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--border);
@@ -770,8 +771,9 @@ select.input {
     border-radius: 20px 20px 0 0;
   }
 
+  /* 글자 길이만큼에서 시작해 남는 폭을 나눠 갖고, 한 줄에 다 안 들어가면 다음 줄로 */
   .modal-md .modal-foot .btn:not(.btn-danger) {
-    flex: 1;
+    flex: 1 1 auto;
   }
 }
 

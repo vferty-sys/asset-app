@@ -95,6 +95,10 @@ export const META_SCHEMA = Object.freeze({
   createdAt: { type: 'string', default: '' },
   onboardingDone: { type: 'boolean', default: false },
   snapshotPromptMonth: { type: 'yearMonth', nullable: true, default: null },
+  // 샘플 데이터로 둘러보는 중인지 (화면 위에 안내를 띄운다)
+  sample: { type: 'boolean', default: false },
+  // 마지막으로 백업 파일을 내려받은 날
+  lastBackupAt: { type: 'date', nullable: true, default: null },
 });
 
 export const TARGET_MODES = Object.freeze(['assetClass', 'ticker']);

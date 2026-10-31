@@ -6,6 +6,7 @@ import { testConnection } from '../market.js';
 import { el, helpTip, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
 import { createField, createToggleField, selectInput, textInput } from './form.js';
+import { dataSection, installSection } from './data-tools.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}월`]);
 
@@ -188,7 +189,7 @@ function createControl(field, value) {
   }
 }
 
-export function render(root, { getState, updateState }) {
+export function render(root, { getState, updateState, navigate }) {
   const hintUpdaters = [];
   const refreshHints = () => {
     const { settings } = getState();
@@ -276,11 +277,9 @@ export function render(root, { getState, updateState }) {
     );
   }
 
-  root.append(
-    el('section', { class: 'card settings-section' },
-      el('h2', { class: 'section-title', text: '내 데이터' }),
-      el('p', { class: 'section-desc', text: '입력한 정보는 이 기기의 브라우저에만 저장되고, 어디로도 전송되지 않아요. 같은 앱 주소를 다른 사람이 써도 데이터가 섞이지 않아요.' })),
-  );
+  const install = installSection();
+  root.append(dataSection({ getState, updateState, navigate }), install.element);
 
   refreshHints();
+  return install.cleanup;
 }

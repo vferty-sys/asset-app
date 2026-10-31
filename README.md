@@ -27,6 +27,9 @@ npm test
 
 ```
 index.html          앱 화면 (탭 7개)
+manifest.json       홈 화면에 추가(PWA) 정보: 이름, 아이콘
+sw.js               서비스 워커: 앱 파일을 저장해 두고 오프라인에서도 열리게 (CACHE_VERSION으로 버전 관리)
+icons/              앱 아이콘 (SVG 원본과 PNG)
 css/                스타일 (라이트/다크 테마)
 js/app.js           진입점, 탭 이동
 js/state.js         앱 데이터 메모리 사본 + 변경 알림
@@ -44,12 +47,24 @@ js/validate.js      입력값 검증
 js/format.js        금액·비율·날짜 표시
 js/dates.js         연·월 계산 (나이, 연금 개시 달, 기간 표시)
 js/constants.js     기본 설정값과 기준값
-js/ui/              탭별 화면
+js/sample-data.js   "샘플 데이터로 둘러보기"용 가상의 데이터
+js/install.js       홈 화면에 설치(앱 설치 버튼) 도우미
+js/ui/              탭별 화면, 첫 사용 가이드(onboarding.js), 백업·복원·초기화(data-tools.js)
 apps-script/Code.gs 구글 시트에 붙여넣을 Apps Script 코드
 docs/               가이드 문서 (앱 안 '시트 연결 가이드' 화면에도 그대로 보임)
 tests/              단위 테스트
 .nojekyll           GitHub Pages가 파일을 그대로 올리도록 (가이드 .md를 앱에서 읽기 위해 필요)
 ```
+
+## 배포 (GitHub Pages)
+
+저장소를 GitHub Pages로 공개하면 휴대폰·PC에서 주소로 열고 홈 화면에 앱처럼 추가할 수 있어요.
+순서는 [docs/DEPLOY.md](docs/DEPLOY.md)에 있습니다. 업데이트를 올려도 각자 브라우저에 저장된 데이터는 그대로예요.
+
+## 데이터 백업과 옮기기
+
+설정 → 내 데이터에서 백업 파일(JSON)을 내려받고, 다른 기기·브라우저에서 "백업 파일로 복원"으로 옮길 수 있어요.
+백업 파일에는 개인 자산 정보가 들어 있으니 저장소에 올리지 마세요 (`.gitignore`가 `*backup*.json`, `asset-app-*.json`을 막아 둠).
 
 ## 앱이 보내는 외부 요청
 
@@ -58,6 +73,8 @@ tests/              단위 테스트
 - 사용자가 설정한 구글 시트 웹 앱 주소로의 시세 GET 요청
 - 차트를 그릴 때 jsDelivr CDN에서 Chart.js 4.4.1을 내려받는 요청 — 버전을 고정하고
   무결성 검사(SRI)를 걸어 두어, 파일이 바뀌어 있으면 실행하지 않고 목록으로만 보여줍니다.
+
+오프라인용 서비스 워커(`sw.js`)는 앱 파일과 Chart.js만 브라우저 안에 저장해 두고, 시세 요청은 건드리지 않습니다.
 
 ## 구글 시트로 시세 자동 연동
 
