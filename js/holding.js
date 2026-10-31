@@ -1,6 +1,6 @@
 // 보유 종목 데이터의 정리와 입력 검증. 입력 화면, CSV 붙여넣기, 저장 데이터 정리에서 함께 쓴다.
 
-import { ACCOUNTS, ASSET_CLASSES, CURRENCIES, HOLDING_TYPES } from './constants.js';
+import { ACCOUNTS, ASSET_CLASSES, CURRENCIES, ETF_SPREADS, HOLDING_TYPES } from './constants.js';
 import { coerceValue, isPlainObject, parseNumberInput, sanitizeObject } from './validate.js';
 import { createId } from './id.js';
 
@@ -19,6 +19,31 @@ export function guessFromTicker(ticker) {
   if (KRW_EXCHANGES.includes(exchange)) return { currency: 'KRW', country: '한국' };
   if (USD_EXCHANGES.includes(exchange)) return { currency: 'USD', country: '미국' };
   return null;
+}
+
+// ETF 이름·티커로 분산 정도를 짐작한다 (입력 화면에서 바꿀 수 있다).
+//  집중형: 레버리지·인버스·단일 종목 / 시장 전체형: S&P500·나스닥100·코스피200·전세계 같은 시장 지수 / 그 밖: 업종·테마형
+const SINGLE_NAME = /레버리지|인버스|곱버스|단일\s*종목|싱글|\b[23]X\b|ULTRA/i;
+const MARKET_NAMES = [
+  /S&P\s*500|\bSP\s*500/i,
+  /나스닥\s*100|NASDAQ[\s-]*100/i,
+  /(코스피|KOSPI)\s*(200|100|50)?\s*(TR)?\s*$/i,
+  /^\S+\s+200\s*(TR)?$/i,
+  /코스닥\s*150|KOSDAQ\s*150/i,
+  /전세계|올\s*월드|ALL[\s-]*WORLD|MSCI|ACWI|토탈\s*마켓|TOTAL\s*(MARKET|STOCK)|선진국|신흥국/i,
+];
+const SINGLE_TICKERS = ['TQQQ', 'SQQQ', 'SOXL', 'SOXS', 'UPRO', 'SPXU', 'SPXL', 'SSO', 'QLD', 'TECL', 'TNA', 'FNGU', 'TSLL', 'NVDL'];
+const MARKET_TICKERS = [
+  'SPY', 'VOO', 'IVV', 'SPLG', 'RSP', 'VTI', 'ITOT', 'SCHB', 'SCHX', 'SPTM', 'QQQ', 'QQQM', 'DIA', 'IWM', 'IWB', 'IWV',
+  'VT', 'VXUS', 'VEA', 'VWO', 'IEFA', 'IEMG', 'EFA', 'EEM', 'ACWI', 'URTH',
+];
+
+export function guessEtfSpread({ name = '', ticker = '' } = {}) {
+  const symbol = normalizeTicker(ticker).split(':').pop();
+  const title = String(name).trim();
+  if (SINGLE_NAME.test(title) || SINGLE_TICKERS.includes(symbol)) return 'single';
+  if (MARKET_NAMES.some((pattern) => pattern.test(title)) || MARKET_TICKERS.includes(symbol)) return 'market';
+  return 'theme';
 }
 
 // 같은 계좌의 같은 종목은 하나만 둔다.
@@ -57,18 +82,27 @@ const STORED_FIELDS = {
   account: { type: 'enum', options: ACCOUNTS, default: '일반' },
   assetClass: { type: 'enum', options: ASSET_CLASSES, default: '기타' },
   dividendPerShare: { type: 'number', nullable: true, min: 0, default: null },
+  etfSpread: { type: 'enum', options: ETF_SPREADS, nullable: true, default: null },
   memo: { type: 'string', default: '' },
 };
+
+// ETF만 분산 정도를 가진다. 고르지 않았으면(예전 데이터 포함) 이름·티커로 짐작한다.
+function spreadFor(type, spread, name, ticker) {
+  if (type !== 'etf') return null;
+  return spread ?? guessEtfSpread({ name, ticker });
+}
 
 // 저장된(또는 복원한) 종목을 현재 구조로 맞춘다. 형식이 틀린 값은 기본값으로 바꾼다.
 export function normalizeHolding(raw) {
   const source = isPlainObject(raw) ? raw : {};
   const fields = sanitizeObject(STORED_FIELDS, source);
+  const ticker = normalizeTicker(source.ticker);
   return {
     id: typeof source.id === 'string' && source.id ? source.id : createId('h'),
     name: fields.name,
-    ticker: normalizeTicker(source.ticker),
+    ticker,
     type: fields.type,
+    etfSpread: spreadFor(fields.type, fields.etfSpread, fields.name, ticker),
     currency: fields.currency,
     quantity: fields.quantity,
     avgPrice: fields.avgPrice,
@@ -124,7 +158,7 @@ function checkTicker(ticker) {
 }
 
 // 입력 화면·CSV에서 받은 값(문자열 포함)을 검사해서 저장할 종목을 만든다.
-// input: { id?, name, ticker, type, currency, quantity, avgPrice, manualPrice, account, assetClass,
+// input: { id?, name, ticker, type, etfSpread?, currency, quantity, avgPrice, manualPrice, account, assetClass,
 //          countryRows: [{ name, percent }], sectorRows, dividendPerShare, memo }
 // 돌려주는 값: { ok, value, errors: { 필드: 문구 }, warnings: { 필드: 문구 } }
 export function validateHolding(input, { allowFractionalUS = false, existing = [] } = {}) {
@@ -146,6 +180,7 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
   if (tickerError) errors.ticker = tickerError;
 
   take('type', { type: 'enum', options: HOLDING_TYPES });
+  take('etfSpread', { type: 'enum', options: ETF_SPREADS, nullable: true });
   take('currency', { type: 'enum', options: CURRENCIES });
   take('account', { type: 'enum', options: ACCOUNTS });
   take('assetClass', { type: 'enum', options: ASSET_CLASSES });
@@ -186,6 +221,7 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
       name,
       ticker,
       type: fields.type,
+      etfSpread: spreadFor(fields.type, fields.etfSpread, name, ticker),
       currency: fields.currency,
       quantity: fields.quantity,
       avgPrice: fields.avgPrice,
@@ -208,6 +244,7 @@ export function holdingToInput(holding) {
     name: holding.name,
     ticker: holding.ticker,
     type: holding.type,
+    etfSpread: holding.etfSpread ?? '',
     currency: holding.currency,
     quantity: text(holding.quantity),
     avgPrice: text(holding.avgPrice),

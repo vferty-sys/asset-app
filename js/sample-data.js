@@ -25,19 +25,19 @@ const HOLDINGS = [
     quantity: 150, avgPrice: 62_000, manualPrice: 68_000, sectorMix: { 기술: 100 }, dividendPerShare: 1_444,
   }),
   etf('s2', 'KODEX 200', 'KRX:069500', {
-    quantity: 120, avgPrice: 33_000, manualPrice: 36_500, dividendPerShare: 600,
+    etfSpread: 'market', quantity: 120, avgPrice: 33_000, manualPrice: 36_500, dividendPerShare: 600,
     sectorMix: { 기술: 35, 금융: 15, 산업재: 15, 소비재: 10, 헬스케어: 10, 기타: 15 },
   }),
   etf('s3', 'TIGER 미국S&P500', 'KRX:360750', {
-    quantity: 900, avgPrice: 15_500, manualPrice: 19_800, account: '연금저축', countryMix: { 미국: 100 }, dividendPerShare: 220,
+    etfSpread: 'market', quantity: 900, avgPrice: 15_500, manualPrice: 19_800, account: '연금저축', countryMix: { 미국: 100 }, dividendPerShare: 220,
     sectorMix: { 기술: 32, 헬스케어: 12, 금융: 13, 소비재: 10, 통신: 9, 산업재: 8, 기타: 16 },
   }),
   etf('s4', 'QQQ', 'NASDAQ:QQQ', {
-    currency: 'USD', quantity: 12, avgPrice: 380, manualPrice: 480, countryMix: { 미국: 100 }, dividendPerShare: 2.8,
+    etfSpread: 'market', currency: 'USD', quantity: 12, avgPrice: 380, manualPrice: 480, countryMix: { 미국: 100 }, dividendPerShare: 2.8,
     sectorMix: { 기술: 58, 통신: 15, 소비재: 18, 헬스케어: 6, 기타: 3 },
   }),
   etf('s5', 'SCHD', 'NYSEARCA:SCHD', {
-    currency: 'USD', quantity: 150, avgPrice: 25, manualPrice: 27.5, assetClass: '배당주', countryMix: { 미국: 100 }, dividendPerShare: 1,
+    etfSpread: 'theme', currency: 'USD', quantity: 150, avgPrice: 25, manualPrice: 27.5, assetClass: '배당주', countryMix: { 미국: 100 }, dividendPerShare: 1,
     sectorMix: { 금융: 20, 필수소비재: 20, 헬스케어: 15, 산업재: 15, 에너지: 10, 기타: 20 },
   }),
   etf('s6', '국고채 10년 ETF', 'KRX:148070', {

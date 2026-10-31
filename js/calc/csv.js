@@ -64,6 +64,7 @@ export const HOLDING_CSV_COLUMNS = Object.freeze([
   { key: 'quantity', label: '수량', aliases: ['보유수량', 'quantity', 'qty'], required: true },
   { key: 'avgPrice', label: '평단가', aliases: ['평균단가', '매입단가', 'avgprice'], required: true },
   { key: 'type', label: '종류', aliases: ['유형', 'type'] },
+  { key: 'etfSpread', label: 'ETF분산', aliases: ['etf분산', '분산', '분산정도', 'etf분산정도', 'spread'] },
   { key: 'currency', label: '통화', aliases: ['currency'] },
   { key: 'account', label: '계좌', aliases: ['account'] },
   { key: 'assetClass', label: '자산군', aliases: ['assetclass'] },
@@ -89,6 +90,11 @@ function headerKey(cell) {
 }
 
 const TYPE_ALIASES = { 주식: 'stock', 개별주식: 'stock', stock: 'stock', etf: 'etf' };
+const SPREAD_ALIASES = {
+  시장전체형: 'market', 시장전체: 'market', 시장: 'market', 지수: 'market', market: 'market',
+  '업종·테마형': 'theme', 업종테마형: 'theme', 테마형: 'theme', 테마: 'theme', 업종: 'theme', theme: 'theme',
+  집중형: 'single', 집중: 'single', single: 'single',
+};
 const CURRENCY_ALIASES = { krw: 'KRW', 원: 'KRW', 원화: 'KRW', '₩': 'KRW', usd: 'USD', 달러: 'USD', $: 'USD' };
 
 function mapAlias(cell, aliases) {
@@ -132,6 +138,7 @@ function newInput(ticker) {
     name: '',
     ticker,
     type: 'stock',
+    etfSpread: '',
     currency: guess?.currency ?? '',
     quantity: '',
     avgPrice: '',
@@ -192,6 +199,7 @@ export function parseHoldingsCsv(text, { existing = [], allowFractionalUS = fals
     input.quantity = cleanNumberCell(record.quantity);
     input.avgPrice = cleanNumberCell(record.avgPrice);
     if (filled('type')) input.type = mapAlias(record.type, TYPE_ALIASES);
+    if (filled('etfSpread')) input.etfSpread = mapAlias(record.etfSpread, SPREAD_ALIASES);
     if (filled('currency')) input.currency = mapAlias(record.currency, CURRENCY_ALIASES);
     if (filled('account')) input.account = record.account;
     if (filled('assetClass')) input.assetClass = record.assetClass;

@@ -109,6 +109,19 @@ test('같은 종목을 여러 계좌에 나눠 가지면 한 종목으로 합친
   assert.equal(weights.length, 2);
   assert.equal(weights[0].ticker, 'KRX:005930');
   near(weights[0].weight, 0.75);
+  assert.equal(weights[0].parts, 1);
+});
+
+test('ETF는 분산 정도에 따라 몇 종목으로 나눠 볼지 정한다 (채권·현금성 ETF는 시장 전체형처럼)', () => {
+  const etf = (id, overrides) => holding(id, 100, { type: 'etf', ...overrides });
+  const weights = holdingWeights(rowsOf([
+    etf('m', { etfSpread: 'market' }), etf('t', { etfSpread: 'theme' }), etf('s', { etfSpread: 'single' }),
+    etf('n', {}), etf('b', { etfSpread: 'single', assetClass: '채권' }), etf('c', { assetClass: '현금성' }), holding('k', 100),
+  ]));
+  const byId = Object.fromEntries(weights.map((item) => [item.ticker.split(':')[1], [item.spread, item.parts]]));
+  assert.deepEqual(byId, {
+    m: ['market', 10], t: ['theme', 3], s: ['single', 1], n: ['theme', 3], b: ['market', 10], c: ['market', 10], k: [null, 1],
+  });
 });
 
 test('toBreakdown / largestOf', () => {
@@ -138,21 +151,29 @@ test('쏠림 경고: 국가·한 종목, 채권·기타·미분류는 섹터 경
     holding('sam', 2_000_000, { name: '삼성전자', sectorMix: { 헬스케어: 100 } }),
   ]);
   const stocks = analyzeDiversification(rows);
+  // 채권 ETF 60%는 시장 전체형처럼 6%짜리 10곳, 분산 정도를 안 고른 ETF 20%는 업종·테마형처럼 6.7%짜리 3곳으로 본다
   const alerts = concentrationAlerts({ ...stocks, holdings: holdingWeights(rows) }, DEFAULT_SETTINGS);
-  assert.deepEqual(alerts.map((alert) => [alert.kind, alert.name]), [
-    ['country', '한국'],
-    ['single', '국고채ETF'],
-  ]);
+  assert.deepEqual(alerts.map((alert) => [alert.kind, alert.name]), [['country', '한국']]);
   assert.match(alerts[0].message, /^한국 비중이 100%예요\. 한국 주식시장이/);
-  assert.match(alerts[1].message, /ETF는 여러 회사를 담고 있어/);
 
   const strict = concentrationAlerts({ ...stocks, holdings: holdingWeights(rows) }, { warnSector: 10, warnCountry: 100, warnSingle: 15 });
   assert.deepEqual(strict.map((alert) => [alert.kind, alert.name]), [
     ['sector', '헬스케어'],
-    ['single', '국고채ETF'],
-    ['single', '현금성ETF'],
     ['single', '삼성전자'],
   ]);
   assert.match(strict[0].message, /헬스케어 주식이 함께 떨어지면/);
-  assert.match(strict[3].message, /^삼성전자 한 종목이 20%예요\. 이 회사에/);
+  assert.match(strict[1].message, /^삼성전자 한 종목이 20%예요\. 이 회사에/);
+});
+
+test('한 종목 쏠림: ETF는 분산 정도만큼 나눈 한 곳의 비중으로 판단한다', () => {
+  const alertsFor = (overrides) => {
+    const rows = rowsOf([holding('etf', 9_000, { name: '이 ETF', type: 'etf', ...overrides }), holding('s', 1_000)]);
+    return concentrationAlerts({ holdings: holdingWeights(rows) }, DEFAULT_SETTINGS).filter((alert) => alert.kind === 'single');
+  };
+  // 90% → 시장 전체형 9%씩 10곳(경고 없음), 업종·테마형 30%씩 3곳(경고), 집중형 90% 한 곳(경고)
+  assert.equal(alertsFor({ etfSpread: 'market' }).length, 0);
+  assert.match(alertsFor({ etfSpread: 'theme' })[0].message, /^이 ETF 한 상품이 90%예요\. 같은 업종·주제의 회사들은/);
+  assert.match(alertsFor({ etfSpread: 'single' })[0].message, /레버리지·인버스·단일 종목처럼/);
+  // 채권 ETF는 고른 값과 상관없이 시장 전체형처럼
+  assert.equal(alertsFor({ etfSpread: 'single', assetClass: '채권' }).length, 0);
 });

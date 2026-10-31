@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { effectiveHoldings, gradeFor, linearFraction, scorePortfolio } from '../js/calc/score.js';
+import { effectiveHoldings, holdingPieces, gradeFor, linearFraction, scorePortfolio } from '../js/calc/score.js';
 import { valuePortfolio } from '../js/calc/valuation.js';
 import { DEFAULT_SETTINGS, SCORE_RULES } from '../js/constants.js';
 
@@ -30,32 +30,34 @@ const EXAMPLE = [
   holding('bond', 1_000_000, { name: '국고채ETF', type: 'etf', assetClass: '채권', sectorMix: { 채권: 100 } }),
 ];
 
-// 실효 종목 수 = 1 / (0.4² + 3×(0.3/3)² + 3×(0.2/3)² + 3×(0.1/3)²) ≈ 4.84
-const EXAMPLE_EFFECTIVE = 1 / (0.16 + 0.03 + 0.04 / 3 + 0.01 / 3);
+// QQQ·SCHD는 분산 정도를 고르지 않아 업종·테마형(3조각), 국고채 ETF는 채권이라 시장 전체형(10조각)
+// 실효 종목 수 = 1 / (0.4² + 3×(0.3/3)² + 3×(0.2/3)² + 10×(0.1/10)²) ≈ 4.89
+const EXAMPLE_EFFECTIVE = 1 / (0.16 + 0.03 + 0.04 / 3 + 0.001);
 const EXAMPLE_COUNT_POINTS = 20 * ((EXAMPLE_EFFECTIVE - 1) / 9);
 
 test('예시 포트폴리오: 항목별 점수와 합계', () => {
   const result = score(EXAMPLE);
   near(item(result, 'count').value, EXAMPLE_EFFECTIVE);
   near(item(result, 'count').points, EXAMPLE_COUNT_POINTS);
-  // 상위 3종목 90% → 80% 이상이라 0점
-  near(item(result, 'top3').points, 0);
+  // 상위 3조각: 삼성전자 40% + QQQ 조각 10% × 2 = 60% → 30 × (0.8 - 0.6) / 0.4
+  near(item(result, 'top3').value, 0.6);
+  near(item(result, 'top3').points, 15);
   // 자산군 HHI = 0.7² + 0.2² + 0.1² = 0.54 → 30 × (1 - 0.54) / 0.75
   near(item(result, 'assetClass').value, 0.54);
   near(item(result, 'assetClass').points, 30 * (0.46 / 0.75));
   // 섹터 최대: 기술 55% (기준 40%) → 10 × (1 - 0.55) / 0.6 = 7.5, 국가 최대 50% (기준 70%) → 10
   near(item(result, 'countrySector').points, 17.5);
-  near(result.total, EXAMPLE_COUNT_POINTS + 0 + 18.4 + 17.5);
-  assert.equal(result.rounded, 44);
-  assert.equal(result.grade.label, '점검이 필요해요');
+  near(result.total, EXAMPLE_COUNT_POINTS + 15 + 18.4 + 17.5);
+  assert.equal(result.rounded, 60);
+  assert.equal(result.grade.label, '괜찮아요');
 });
 
 test('예시 포트폴리오: 감점 사유를 쉬운 문장으로', () => {
   const result = score(EXAMPLE);
   assert.equal(item(result, 'count').reason,
-    '실효 종목 수는 4.8개예요(금액 기준, ETF는 3개로 나눠 셈). 보유 종목은 4개지만 금액이 일부 종목에 몰려 있어서 더 적게 셌어요. 금액을 여러 종목에 고르게 나눌수록 10개에 가까워지고 점수가 올라가요.');
+    '실효 종목 수는 4.9개예요(금액 기준, ETF는 분산 정도에 따라 나눠 셈). 보유 종목은 4개지만 금액이 일부 종목에 몰려 있어서 더 적게 셌어요. 금액을 여러 종목에 고르게 나눌수록 10개에 가까워지고 점수가 올라가요.');
   assert.equal(item(result, 'top3').reason,
-    '가장 큰 3종목(삼성전자, QQQ, SCHD)이 전체의 90%예요. 40% 이하로 낮추면 만점이에요. ETF는 여러 회사를 담고 있어 실제 쏠림은 이보다 작을 수 있어요.');
+    '가장 큰 3종목이 전체의 60%예요(삼성전자, QQQ). 40% 이하로 낮추면 만점이에요. ETF는 분산 정도에 따라 여러 종목으로 나눠 셌어요.');
   assert.equal(item(result, 'assetClass').reason,
     '가장 큰 자산군은 성장주로 70%를 차지해요. 한쪽으로 몰려 있어요. 다른 자산군의 비중을 늘리면 점수가 올라가요. (HHI 0.54)');
   assert.equal(item(result, 'countrySector').reason,
@@ -68,9 +70,11 @@ test('실효 종목 수: 금액 기준, 1개 0점, 10개 이상 20점, 그 사�
   near(item(score(Array.from({ length: 4 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20 * (3 / 9));
   near(item(score(Array.from({ length: 12 }, (_, i) => holding(`s${i}`, 100))), 'count').points, 20);
   assert.match(item(score(Array.from({ length: 12 }, (_, i) => holding(`s${i}`, 100))), 'count').reason, /10개 이상이라 만점/);
-  // ETF 하나는 금액을 3등분해 3종목으로
+  // ETF 하나는 분산 정도만큼: 업종·테마형(고르지 않았을 때도) 3종목, 시장 전체형 10종목, 집중형 1종목
   near(item(score([holding('etf', 100, { type: 'etf' })]), 'count').value, 3);
   near(item(score([holding('etf', 100, { type: 'etf' })]), 'count').points, 20 * (2 / 9));
+  near(item(score([holding('etf', 100, { type: 'etf', etfSpread: 'market' })]), 'count').points, 20);
+  near(item(score([holding('etf', 100, { type: 'etf', etfSpread: 'single' })]), 'count').points, 0);
   // 같은 종목을 두 계좌에 나눠 가져도 1개
   const twoAccounts = [holding('a', 100, { ticker: 'KRX:1' }), holding('b', 100, { ticker: 'KRX:1', account: 'ISA' })];
   near(item(score(twoAccounts), 'count').value, 1);
@@ -93,12 +97,20 @@ test('실효 종목 수: 아주 작은 금액만 담은 종목·ETF로는 점수
   assert.ok(score(tinyEtfs).total < score(seventyThirty).total);
 });
 
-test('effectiveHoldings: 1 / Σ비중², ETF는 비중을 나눠 센다', () => {
+test('effectiveHoldings: 1 / Σ비중², ETF는 나눈 조각(parts)으로 센다', () => {
   near(effectiveHoldings([{ type: 'stock', weight: 0.5 }, { type: 'stock', weight: 0.5 }]), 2);
   near(effectiveHoldings([{ type: 'stock', weight: 0.7 }, { type: 'stock', weight: 0.3 }]), 1 / 0.58);
-  near(effectiveHoldings([{ type: 'etf', weight: 1 }]), 3);
-  near(effectiveHoldings([{ type: 'etf', weight: 1 }], 1), 1);
+  near(effectiveHoldings([{ type: 'etf', parts: 3, weight: 1 }]), 3);
+  near(effectiveHoldings([{ type: 'etf', parts: 10, weight: 1 }]), 10);
+  near(effectiveHoldings([{ type: 'etf', parts: 1, weight: 1 }]), 1);
   assert.equal(effectiveHoldings([]), 0);
+});
+
+test('holdingPieces: ETF를 분산 정도만큼 똑같이 나눈 조각으로 펼쳐 큰 순서로', () => {
+  const pieces = holdingPieces([{ name: 'S&P500', type: 'etf', parts: 10, weight: 0.5 }, { name: '삼성전자', type: 'stock', weight: 0.5 }]);
+  assert.equal(pieces.length, 11);
+  assert.equal(pieces[0].name, '삼성전자');
+  near(pieces[1].weight, 0.05);
 });
 
 test('상위 3종목 집중도: 40% 이하 30점, 80% 이상 0점, 그 사이 선형', () => {
@@ -108,6 +120,18 @@ test('상위 3종목 집중도: 40% 이하 30점, 80% 이상 0점, 그 사이 �
   near(item(score(sixty), 'top3').value, 0.6);
   near(item(score(sixty), 'top3').points, 15);
   assert.match(item(score([holding('a', 1), holding('b', 1)]), 'top3').reason, /종목이 2개라/);
+});
+
+test('상위 3종목 집중도: ETF는 분산 정도에 따라 나눠 센다 (사용자와 정한 예)', () => {
+  const etf = (id, value, etfSpread, overrides = {}) => holding(id, value, { name: id, type: 'etf', etfSpread, ...overrides });
+  // A: S&P500 50% + 코스피200 30%(시장 전체형) + 국고채 20% → 5%씩 3조각 = 15% → 만점
+  const a = [etf('S&P500', 50, 'market'), etf('코스피200', 30, 'market'), etf('국고채', 20, 'theme', { assetClass: '채권' })];
+  near(item(score(a), 'top3').value, 0.15);
+  near(item(score(a), 'top3').points, 30);
+  // B: 개별 주식 50 + 30 + 20 → 100% → 0점
+  near(item(score([holding('a', 50), holding('b', 30), holding('c', 20)]), 'top3').points, 0);
+  // C: 테마 ETF 하나에 100% → 33%씩 3조각 = 100% → 0점
+  near(item(score([etf('2차전지', 100, 'theme')]), 'top3').points, 0);
 });
 
 test('자산군 분산 HHI: 0.25 이하 30점, 1.0이면 0점', () => {

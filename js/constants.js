@@ -15,6 +15,13 @@ export const ASSET_CLASSES = Object.freeze(['성장주', '배당주', '채권', 
 export const CURRENCIES = Object.freeze(['KRW', 'USD']);
 export const HOLDING_TYPES = Object.freeze(['stock', 'etf']);
 export const HOLDING_TYPE_LABELS = Object.freeze({ stock: '개별 주식', etf: 'ETF' });
+// ETF 분산 정도: 건강도 점수(실효 종목 수·상위 3종목)와 한 종목 쏠림 경고에서 ETF를 몇 종목으로 나눠 볼지.
+// ETF가 실제로 담은 회사 목록은 받아올 수 없어서, 분산 정도를 골라 어림한다 (사용자와 합의).
+export const ETF_SPREADS = Object.freeze(['market', 'theme', 'single']);
+export const ETF_SPREAD_LABELS = Object.freeze({ market: '시장 전체형', theme: '업종·테마형', single: '집중형' });
+export const ETF_SPREAD_COUNTS = Object.freeze({ market: 10, theme: 3, single: 1 });
+// 채권·현금성 ETF는 특정 회사에 몰린 위험이 아니므로 분산 정도를 고르지 않고 시장 전체형처럼 본다.
+export const BROAD_ASSET_CLASSES = Object.freeze(['채권', '현금성']);
 
 // 국가·섹터 선택지. CSV나 백업으로 들어온 다른 이름도 그대로 쓸 수 있다.
 export const COUNTRY_OPTIONS = Object.freeze(['한국', '미국', '중국', '일본', '유럽', '신흥국', '기타']);
@@ -118,9 +125,9 @@ export const NON_COUNTRY_NAMES = Object.freeze(['기타', UNCLASSIFIED]);
 //  fullAt: 만점이 되는 값, zeroAt: 0점이 되는 값, 그 사이는 선형
 //  count: 요청서의 '종목 수'를 금액 기준인 실효 종목 수(1 / Σ비중²)로 센다.
 //         작은 금액만 담은 종목으로 점수가 오르지 않게 하려는 것(사용자와 합의).
-//         ETF는 비중을 etfCountsAs개로 똑같이 나눈 종목들로 본다.
+//  ETF는 count와 top3 모두 비중을 ETF_SPREAD_COUNTS개로 똑같이 나눈 종목들로 본다.
 export const SCORE_RULES = Object.freeze({
-  count: { points: 20, zeroAt: 1, fullAt: 10, etfCountsAs: 3 },
+  count: { points: 20, zeroAt: 1, fullAt: 10 },
   top3: { points: 30, fullAt: 0.4, zeroAt: 0.8 },
   assetClass: { points: 30, fullAt: 0.25, zeroAt: 1 },
   // 최대 섹터·최대 국가 비중이 설정의 경고 기준 이하면 만점, 100%면 0점

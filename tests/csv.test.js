@@ -118,3 +118,15 @@ test('미국 주식 소수점 수량은 설정을 따른다', () => {
   assert.equal(parseHoldingsCsv(text).rows[0].status, 'error');
   assert.equal(parseHoldingsCsv(text, { allowFractionalUS: true }).rows[0].status, 'add');
 });
+
+test('ETF 분산 정도 열(선택): 이름으로 적고, 비우면 종목명으로 짐작한다', () => {
+  const text = [
+    '종목명,티커,종류,ETF 분산,수량,평단가',
+    '2차전지 액티브,KRX:111111,ETF,시장 전체형,1,10000',
+    'KODEX 200,KRX:069500,ETF,,1,30000',
+    '미국 반도체,KRX:222222,ETF,집중,1,10000',
+    '삼성전자,KRX:005930,주식,시장 전체형,1,60000',
+  ].join('\n');
+  const { rows } = parseHoldingsCsv(text);
+  assert.deepEqual(rows.map((row) => row.holding.etfSpread), ['market', 'market', 'single', null]);
+});

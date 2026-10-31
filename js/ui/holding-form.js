@@ -1,7 +1,9 @@
 // 보유 종목 추가·수정 창
 
-import { ACCOUNTS, ASSET_CLASSES, COUNTRY_OPTIONS, SECTOR_OPTIONS } from '../constants.js';
-import { guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
+import {
+  ACCOUNTS, ASSET_CLASSES, BROAD_ASSET_CLASSES, COUNTRY_OPTIONS, ETF_SPREADS, ETF_SPREAD_LABELS, SECTOR_OPTIONS,
+} from '../constants.js';
+import { guessEtfSpread, guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
 import { parseNumberInput } from '../validate.js';
 import { el, clear, closeIcon, confirmDialog, openModal, showToast, uid } from '../dom.js';
 import { createField, numberInput, segmented, selectInput, textInput } from './form.js';
@@ -28,6 +30,12 @@ const HELP = {
   country: '회사(또는 ETF가 담은 회사들)가 어느 나라에 있는지예요.',
   sector: '섹터는 기술·금융·소비재처럼 회사가 하는 일의 분야예요.',
   dividend: '1년 동안 1주당 받는 배당금 합계예요. 모르면 비워 두세요.',
+  spread: [
+    'ETF가 회사들을 얼마나 넓게 담았는지예요. 건강도 점수와 쏠림 경고에서 ETF 하나를 몇 종목으로 볼지 정해요.',
+    '시장 전체형: S&P500·코스피200·나스닥100·전세계 주식처럼 시장 전체를 담은 ETF (10종목으로 봐요)',
+    '업종·테마형: 반도체·2차전지·배당·리츠처럼 한 업종이나 주제의 회사들을 담은 ETF (3종목으로 봐요)',
+    '집중형: 레버리지·인버스·단일 종목처럼 몇 곳에 몰린 ETF (1종목으로 봐요)',
+  ],
 };
 
 const currencySuffix = (currency) => (currency === 'USD' ? '달러' : '원');
@@ -38,6 +46,7 @@ function emptyInput() {
     name: '',
     ticker: '',
     type: 'stock',
+    etfSpread: '',
     currency: 'KRW',
     quantity: '',
     avgPrice: '',
@@ -159,6 +168,8 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   const input = isEdit ? holdingToInput(holding) : emptyInput();
   let currencyTouched = isEdit;
   let countryTouched = isEdit;
+  // 저장된 ETF의 분산 정도는 사용자가 정한 값으로 본다 (이름을 바꿔도 다시 짐작하지 않음)
+  let spreadTouched = isEdit && input.type === 'etf';
 
   const nameField = createField({ label: '종목명', control: textInput({ value: input.name, placeholder: '예: 삼성전자', maxlength: 60 }) });
 
@@ -173,9 +184,20 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     onChange: (type) => {
       countryEditor.setSingle(type === 'stock');
       sectorEditor.setSingle(type === 'stock');
+      refreshSpread();
     },
   });
   const typeField = createField({ label: '종류', control: typeControl.element, group: true });
+
+  const spreadControl = segmented({
+    options: ETF_SPREADS.map((spread) => [spread, ETF_SPREAD_LABELS[spread]]),
+    value: input.etfSpread || guessEtfSpread({ name: input.name, ticker: input.ticker }),
+    onChange: () => {
+      spreadTouched = true;
+      refreshSpread();
+    },
+  });
+  const spreadField = createField({ label: 'ETF 분산 정도', help: HELP.spread, control: spreadControl.element, group: true });
 
   const currencyControl = segmented({
     options: CURRENCY_OPTIONS,
@@ -228,10 +250,23 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     if (!countryTouched || countryEditor.isBlank()) countryEditor.setRows([{ name: guess.country, percent: '100' }]);
   });
 
+  // ETF 분산 정도는 ETF일 때만 보여준다. 채권·현금성 ETF는 점수에서 시장 전체형처럼 보므로 고를 필요가 없다.
+  // 직접 고른 적이 없으면 이름·티커를 보고 짐작해 둔다.
+  function refreshSpread() {
+    const isEtf = typeControl.value === 'etf';
+    const broad = BROAD_ASSET_CLASSES.includes(assetClassField.control.value);
+    spreadField.element.hidden = !isEtf || broad;
+    if (isEtf && !spreadTouched) spreadControl.value = guessEtfSpread({ name: nameField.control.value, ticker: tickerInput.value });
+    spreadField.setHint(isEtf && !spreadTouched ? '종목명을 보고 먼저 골라 두었어요. 다르면 바꿔 주세요.' : '');
+  }
+  [nameField.control, tickerInput, assetClassField.control].forEach((control) => control.addEventListener('change', refreshSpread));
+  refreshSpread();
+
   const views = {
     name: nameField,
     ticker: tickerField,
     type: typeField,
+    etfSpread: spreadField,
     currency: currencyField,
     quantity: quantityField,
     avgPrice: avgPriceField,
@@ -249,6 +284,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     nameField.element,
     tickerField.element,
     el('div', { class: 'form-pair' }, typeField.element, currencyField.element),
+    spreadField.element,
     el('div', { class: 'form-pair' }, quantityField.element, avgPriceField.element),
     el('div', { class: 'form-pair' }, accountField.element, assetClassField.element),
     countryEditor.element,
@@ -275,6 +311,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
       name: nameField.control.value,
       ticker: tickerInput.value,
       type: typeControl.value,
+      etfSpread: typeControl.value === 'etf' ? spreadControl.value : '',
       currency: currencyControl.value,
       quantity: quantityField.control.value,
       avgPrice: avgPriceField.control.value,

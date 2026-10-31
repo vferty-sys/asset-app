@@ -1,5 +1,6 @@
 // 보유 종목 탭: 요약, 경고, 종목 목록(PC는 표, 모바일은 카드)
 
+import { BROAD_ASSET_CLASSES, ETF_SPREAD_LABELS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { isMixComplete } from '../holding.js';
 import { findPriceIssues } from '../price.js';
@@ -21,8 +22,14 @@ function quantityText(holding) {
   return `${formatNumber(holding.quantity, { maximumFractionDigits: 4 })}주`;
 }
 
+// 'ETF(시장 전체형)'. 채권·현금성 ETF는 분산 정도를 고르지 않으므로 'ETF'만
+function etfLabel(holding) {
+  if (holding.type !== 'etf') return null;
+  return BROAD_ASSET_CLASSES.includes(holding.assetClass) || !holding.etfSpread ? 'ETF' : `ETF(${ETF_SPREAD_LABELS[holding.etfSpread]})`;
+}
+
 function subline(holding) {
-  return [holding.ticker, holding.account, holding.type === 'etf' ? 'ETF' : null].filter(Boolean).join(' · ');
+  return [holding.ticker, holding.account, etfLabel(holding)].filter(Boolean).join(' · ');
 }
 
 function badge(tone, text, title) {

@@ -10,6 +10,7 @@ const COLUMN_HINTS = {
   quantity: '보유 수량',
   avgPrice: '평균 매입 단가 (그 종목의 통화 기준)',
   type: '주식 또는 ETF (비우면 주식)',
+  etfSpread: 'ETF만: 시장 전체형 / 업종·테마형 / 집중형 (비우면 종목명으로 짐작)',
   currency: 'KRW 또는 USD (비우면 티커로 짐작)',
   account: `${ACCOUNTS.join(' / ')} (비우면 일반)`,
   assetClass: `${ASSET_CLASSES.join(' / ')} (비우면 기타)`,

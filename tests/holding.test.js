@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  guessFromTicker, holdingKey, holdingToInput, isMixComplete, normalizeHolding, normalizeTicker,
+  guessEtfSpread, guessFromTicker, holdingKey, holdingToInput, isMixComplete, normalizeHolding, normalizeTicker,
   validateHolding, validateMix,
 } from '../js/holding.js';
 
@@ -31,6 +31,7 @@ test('정상 입력은 저장할 종목 객체가 된다', () => {
     name: '삼성전자',
     ticker: 'KRX:005930',
     type: 'stock',
+    etfSpread: null,
     currency: 'KRW',
     quantity: 10,
     avgPrice: 61000,
@@ -124,7 +125,7 @@ test('normalizeHolding: 저장 데이터의 틀린 값은 기본값으로, 비�
     countryMix: { 미국: 100, 한국: -5, 일본: 'x' }, sectorMix: null, extra: true,
   });
   assert.deepEqual(holding, {
-    id: 'x1', name: '테스트', ticker: 'NASDAQ:QQQ', type: 'stock', currency: 'USD', quantity: 0,
+    id: 'x1', name: '테스트', ticker: 'NASDAQ:QQQ', type: 'stock', etfSpread: null, currency: 'USD', quantity: 0,
     avgPrice: 100, manualPrice: null, account: '일반', assetClass: '성장주',
     countryMix: { 미국: 100 }, sectorMix: {}, dividendPerShare: null, memo: '',
   });
@@ -136,6 +137,31 @@ test('저장된 종목 → 입력값 → 다시 검사하면 같은 종목', () 
   const again = validateHolding(holdingToInput(saved), { existing: [saved] });
   assert.equal(again.ok, true);
   assert.deepEqual(again.value, saved);
+});
+
+test('ETF 분산 정도: 고르면 그대로, 안 고르면 종목명·티커로 짐작, 개별 주식은 없음', () => {
+  assert.equal(validateHolding(baseInput({ type: 'etf', name: '2차전지 ETF', etfSpread: 'market' })).value.etfSpread, 'market');
+  assert.equal(validateHolding(baseInput({ type: 'etf', name: 'KODEX 200', etfSpread: '' })).value.etfSpread, 'market');
+  assert.equal(validateHolding(baseInput({ type: 'etf', name: 'KODEX 2차전지산업' })).value.etfSpread, 'theme');
+  assert.equal(validateHolding(baseInput({ type: 'stock', etfSpread: 'market' })).value.etfSpread, null);
+  assert.equal(validateHolding(baseInput({ type: 'etf', etfSpread: '이상한값' })).ok, false);
+  // 예전 데이터(분산 정도 없음)도 이름으로 짐작해 채운다
+  assert.equal(normalizeHolding({ name: 'TIGER 미국S&P500', ticker: 'KRX:360750', type: 'etf' }).etfSpread, 'market');
+  assert.equal(normalizeHolding({ name: 'X', ticker: 'NASDAQ:QQQ', type: 'etf', etfSpread: 'single' }).etfSpread, 'single');
+});
+
+test('ETF 분산 정도 짐작: 집중형(레버리지·인버스) → 시장 전체형(시장 지수) → 그 밖은 업종·테마형', () => {
+  const cases = {
+    'KODEX 200': 'market', 'TIGER 200TR': 'market', 'TIGER 미국S&P500': 'market', 'KODEX 미국나스닥100TR': 'market',
+    'KODEX MSCI World': 'market', 'KODEX 코스닥150': 'market', 'KODEX 코스피': 'market',
+    'TIGER 200 IT': 'theme', 'KODEX 2차전지산업': 'theme', 'TIGER 미국배당다우존스': 'theme', 'TIGER 미국테크TOP10': 'theme',
+    'KODEX 레버리지': 'single', 'KODEX 인버스': 'single', 'TIGER 200 에너지화학레버리지': 'single',
+  };
+  for (const [name, expected] of Object.entries(cases)) assert.equal(guessEtfSpread({ name }), expected, name);
+  assert.equal(guessEtfSpread({ name: 'QQQ', ticker: 'NASDAQ:QQQ' }), 'market');
+  assert.equal(guessEtfSpread({ name: 'VOO', ticker: 'NYSEARCA:VOO' }), 'market');
+  assert.equal(guessEtfSpread({ name: 'SCHD', ticker: 'NYSEARCA:SCHD' }), 'theme');
+  assert.equal(guessEtfSpread({ name: 'TQQQ', ticker: 'NASDAQ:TQQQ' }), 'single');
 });
 
 test('isMixComplete', () => {
