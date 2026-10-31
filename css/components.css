@@ -781,3 +781,46 @@ select.input {
   padding: 24px;
   text-align: center;
 }
+
+/* ── 종목명 자동완성 ─────────────────────── */
+.picker-field {
+  position: relative;
+}
+
+.picker-list {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  max-height: 290px;
+  margin: 0;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  box-shadow: var(--shadow-lg, 0 12px 32px rgba(15, 23, 42, 0.16));
+}
+
+.picker-option {
+  display: grid;
+  gap: 1px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.picker-option:hover,
+.picker-option[aria-selected="true"] {
+  background: var(--primary-weak);
+}
+
+.picker-name {
+  font-weight: 700;
+}
+
+.picker-meta {
+  color: var(--text-muted);
+  font-size: 0.8125rem;
+}

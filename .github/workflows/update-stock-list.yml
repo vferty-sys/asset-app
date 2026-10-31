@@ -1,0 +1,54 @@
+# 매달 한 번 종목 목록(data/stocks.json)을 새로 만든다. 새로 상장한 종목이 자동완성에 나오게 하려는 것.
+# 저장소의 Actions 탭 → "종목 목록 갱신" → Run workflow 로 바로 실행할 수도 있다.
+name: 종목 목록 갱신
+
+on:
+  schedule:
+    - cron: '23 21 1 * *' # 매달 2일 오전 6시 23분 (한국 시간)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: update-stock-list
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 종목 목록 만들기
+        run: node scripts/build-stock-list.mjs
+
+      - name: 테스트 (목록 형식 검사 포함)
+        run: npm test
+
+      - name: 바뀌었으면 저장
+        id: save
+        run: |
+          if git diff --quiet -- data/stocks.json; then
+            echo "바뀐 내용이 없어요"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/stocks.json
+          git commit -m "종목 목록 갱신 ($(date -u +%Y-%m-%d))"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: 사이트 다시 올리기
+        if: steps.save.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || echo "Pages가 알아서 다시 올릴 거예요"
