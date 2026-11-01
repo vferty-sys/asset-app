@@ -62,25 +62,25 @@ export const US_ETFS = [
   ['VNQ', 'Vanguard Real Estate ETF', ['미국 리츠'], '미국 리츠 REIT'],
 ];
 
-// S&P500 밖이지만 많이 사는 미국 상장 종목: [티커, 영문 이름, 한글 이름들, 앱 섹터, 국가(회사가 주로 일하는 곳)]
+// S&P500 밖이지만 많이 사는 미국 상장 종목: [티커, 영문 이름, 한글 이름들, 앱 섹터, 국가(본사 나라, 선택지에 없으면 유럽·신흥국)]
 export const US_EXTRA_STOCKS = [
-  ['TSM', 'Taiwan Semiconductor Manufacturing (ADR)', ['TSMC', '대만 반도체'], '기술', '신흥국'],
+  ['TSM', 'Taiwan Semiconductor Manufacturing (ADR)', ['TSMC', '대만 반도체'], '기술', '대만'],
   ['ASML', 'ASML Holding (ADR)', ['에이에스엠엘'], '기술', '유럽'],
-  ['ARM', 'Arm Holdings (ADR)', ['암'], '기술', '유럽'],
+  ['ARM', 'Arm Holdings (ADR)', ['암'], '기술', '영국'],
   ['NVO', 'Novo Nordisk (ADR)', ['노보노디스크'], '헬스케어', '유럽'],
   ['BABA', 'Alibaba Group (ADR)', ['알리바바'], '소비재', '중국'],
   ['PDD', 'PDD Holdings (ADR)', ['핀둬둬', '테무'], '소비재', '중국'],
   ['MELI', 'MercadoLibre', ['메르카도리브레'], '소비재', '신흥국'],
-  ['SHOP', 'Shopify', ['쇼피파이'], '기술', '기타'],
+  ['SHOP', 'Shopify', ['쇼피파이'], '기술', '캐나다'],
   ['CPNG', 'Coupang', ['쿠팡'], '소비재', '한국'],
   ['SOFI', 'SoFi Technologies', ['소파이'], '금융', '미국'],
   ['RIVN', 'Rivian Automotive', ['리비안'], '소비재', '미국'],
   ['IONQ', 'IonQ', ['아이온큐'], '기술', '미국'],
   ['RKLB', 'Rocket Lab', ['로켓랩'], '산업재', '미국'],
   ['SNOW', 'Snowflake', ['스노우플레이크'], '기술', '미국'],
-  ['NU', 'Nu Holdings', ['누홀딩스'], '금융', '신흥국'],
+  ['NU', 'Nu Holdings', ['누홀딩스'], '금융', '브라질'],
   ['RXRX', 'Recursion Pharmaceuticals', ['리커전 파머슈티컬스', '리커전'], '헬스케어', '미국'],
-  ['VFS', 'VinFast Auto', ['빈패스트'], '소비재', '신흥국'],
+  ['VFS', 'VinFast Auto', ['빈패스트'], '소비재', '베트남'],
 ];
 
 // S&P500 종목의 한글 이름 (티커 → 별칭)

@@ -2,6 +2,7 @@
 
 import { BROAD_ASSET_CLASSES, ETF_SPREAD_LABELS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
+import { holdingCountryMix } from '../country-weights.js';
 import { isMixComplete } from '../holding.js';
 import { findPriceIssues } from '../price.js';
 import { getMarket, subscribeMarket } from '../market.js';
@@ -141,7 +142,7 @@ export function render(root, { getState, updateState, subscribe }) {
         ? `현재가를 받지 못한 종목 ${portfolio.avgPriceCount}개는 평단가로 계산했어요.`
         : `현재가가 없는 종목 ${portfolio.avgPriceCount}개는 평단가로 계산했어요. 종목을 눌러 현재가를 입력하거나 구글 시트를 연결해 주세요.`);
     }
-    const incompleteMix = state.holdings.filter((h) => !isMixComplete(h.countryMix) || !isMixComplete(h.sectorMix)).length;
+    const incompleteMix = state.holdings.filter((h) => !isMixComplete(holdingCountryMix(h)) || !isMixComplete(h.sectorMix)).length;
     if (incompleteMix > 0) {
       warn(`국가·섹터 비율 합계가 100%가 아닌 종목이 ${incompleteMix}개 있어요. 분산 분석이 정확하지 않을 수 있어요.`);
     }

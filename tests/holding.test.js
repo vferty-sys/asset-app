@@ -39,6 +39,7 @@ test('정상 입력은 저장할 종목 객체가 된다', () => {
     account: '일반',
     assetClass: '성장주',
     countryMix: { 한국: 100 },
+    countryPreset: null,
     sectorMix: { 기술: 100 },
     dividendPerShare: null,
     memo: '',
@@ -127,7 +128,7 @@ test('normalizeHolding: 저장 데이터의 틀린 값은 기본값으로, 비�
   assert.deepEqual(holding, {
     id: 'x1', name: '테스트', ticker: 'NASDAQ:QQQ', type: 'stock', etfSpread: null, currency: 'USD', quantity: 0,
     avgPrice: 100, manualPrice: null, account: '일반', assetClass: '성장주',
-    countryMix: { 미국: 100 }, sectorMix: {}, dividendPerShare: null, memo: '',
+    countryMix: { 미국: 100 }, countryPreset: null, sectorMix: {}, dividendPerShare: null, memo: '',
   });
   assert.match(normalizeHolding({}).id, /^h_/);
 });
@@ -168,4 +169,35 @@ test('isMixComplete', () => {
   assert.equal(isMixComplete({ 미국: 60, 한국: 40 }), true);
   assert.equal(isMixComplete({ 미국: 60 }), false);
   assert.equal(isMixComplete({}), false);
+});
+
+test('ETF 국가 비중표: 항목을 고르면 비중표로 나누고, 없는 항목은 오류, 개별 주식은 무시', () => {
+  const etf = (overrides) => baseInput({ name: 'KODEX 선진국MSCI World', ticker: 'KRX:251350', type: 'etf', countryRows: [], ...overrides });
+  const picked = validateHolding(etf({ countryPreset: 'MSCI World' }));
+  assert.equal(picked.ok, true);
+  assert.equal(picked.value.countryPreset, 'MSCI World');
+  assert.equal(picked.value.countryMix.미국, 72);
+  assert.equal(Object.values(picked.value.countryMix).reduce((sum, value) => sum + value, 0), 100);
+
+  const unknown = validateHolding(etf({ countryPreset: '없는 지수' }));
+  assert.equal(unknown.ok, false);
+  assert.match(unknown.errors.countryMix, /비중표에 없는 항목/);
+
+  // 비중표를 고르지 않았으면 비율 줄을 검사한다
+  assert.match(validateHolding(etf({ countryPreset: '' })).errors.countryMix, /국가를 골라/);
+
+  const stock = validateHolding(baseInput({ countryPreset: 'MSCI World' }));
+  assert.equal(stock.value.countryPreset, null);
+  assert.deepEqual(stock.value.countryMix, { 한국: 100 });
+
+  // 저장 → 입력값 → 다시 검사해도 그대로
+  const again = validateHolding(holdingToInput(picked.value), { existing: [picked.value] });
+  assert.deepEqual(again.value, picked.value);
+});
+
+test('normalizeHolding: ETF의 비중표 항목은 (비중표에서 빠진 이름도) 그대로 두고, 개별 주식은 버린다', () => {
+  assert.equal(normalizeHolding({ type: 'etf', countryPreset: 'MSCI ACWI' }).countryPreset, 'MSCI ACWI');
+  assert.equal(normalizeHolding({ type: 'etf', countryPreset: '예전 지수' }).countryPreset, '예전 지수');
+  assert.equal(normalizeHolding({ type: 'etf', countryPreset: 3 }).countryPreset, null);
+  assert.equal(normalizeHolding({ type: 'stock', countryPreset: 'MSCI ACWI' }).countryPreset, null);
 });

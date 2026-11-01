@@ -2,18 +2,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APPROX_COUNTRY_MIXES, APPROX_SECTOR_MIXES, classifyEtf, sectorFromGics, sectorFromKrIndustry, stockAssetClass,
+  APPROX_SECTOR_MIXES, classifyEtf, guessCountry, sectorFromGics, sectorFromKrIndustry, stockAssetClass,
 } from '../js/classify.js';
-import { COUNTRY_OPTIONS, SECTOR_OPTIONS } from '../js/constants.js';
+import { GLOBAL_COUNTRY, presetMix } from '../js/country-weights.js';
+import { SECTOR_OPTIONS } from '../js/constants.js';
 
-test('대략값 비율은 모두 합계 100이고 앱의 국가·섹터 이름만 쓴다', () => {
+test('업종 대략값 비율은 모두 합계 100이고 앱의 섹터 이름만 쓴다', () => {
   for (const [key, mix] of Object.entries(APPROX_SECTOR_MIXES)) {
     assert.equal(Object.values(mix).reduce((sum, value) => sum + value, 0), 100, key);
     assert.ok(Object.keys(mix).every((name) => SECTOR_OPTIONS.includes(name)), key);
-  }
-  for (const [key, mix] of Object.entries(APPROX_COUNTRY_MIXES)) {
-    assert.equal(Object.values(mix).reduce((sum, value) => sum + value, 0), 100, key);
-    assert.ok(Object.keys(mix).every((name) => COUNTRY_OPTIONS.includes(name)), key);
   }
 });
 
@@ -75,28 +72,60 @@ test('ETF 자산군: 현금성 → 채권 → 기타(금·원자재·리츠·인
   assert.deepEqual([gold.countryMix, gold.sectorMix], [{ 기타: 100 }, { 기타: 100 }]);
 });
 
-test('ETF 국가: 국내 시장이면 한국, 해외는 이름으로, 전세계·선진국·신흥국은 대략적인 나눔', () => {
+test('ETF 국가: 상장된 나라가 아니라 투자 대상 — 국내 시장이면 한국, 해외는 이름으로', () => {
   assert.deepEqual(classifyEtf('KODEX 반도체', { market: '국내' }).countryMix, { 한국: 100 });
   assert.deepEqual(classifyEtf('TIGER 미국S&P500', { market: '해외' }).countryMix, { 미국: 100 });
+  assert.deepEqual(classifyEtf('TIGER 미국S&P500').countryMix, { 미국: 100 }); // 비중표의 한 나라 지수 이름
+  assert.deepEqual(classifyEtf('ACE 일본Nikkei225(H)').countryMix, { 일본: 100 });
   assert.deepEqual(classifyEtf('TIGER 차이나전기차SOLACTIVE').countryMix, { 중국: 100 });
-  assert.deepEqual(classifyEtf('ACE 일본니케이225(H)').countryMix, { 일본: 100 });
-  assert.deepEqual(classifyEtf('KODEX 인도Nifty50').countryMix, { 신흥국: 100 });
-  const world = classifyEtf('KODEX MSCI World');
-  assert.deepEqual(world.countryMix, APPROX_COUNTRY_MIXES.world);
-  assert.equal(world.approx, true);
+  assert.deepEqual(classifyEtf('KODEX 인도Nifty50').countryMix, { 인도: 100 });
+  assert.deepEqual(classifyEtf('ACE 베트남VN30(합성)').countryMix, { 베트남: 100 });
+  assert.deepEqual(classifyEtf('TIGER 대만증권거래소').countryMix, { 대만: 100 });
   assert.deepEqual(classifyEtf('KODEX 골드선물(H)', { market: '해외' }).countryMix, { 기타: 100 });
   assert.equal(classifyEtf('이름에 단서 없음').countryMix, null);
-  assert.deepEqual(classifyEtf('이름에 단서 없음', { market: '해외' }).countryMix, { 기타: 100 });
-  // 국내에만 있는 금리·채권 이름은 한국, TDF는 전세계 대략값
+  // 한 회사와 협력사에 투자하는 ETF는 그 회사의 나라 (채권혼합은 국내 채권이 섞여 있어 빼고 직접 고르게)
+  assert.deepEqual(classifyEtf('ACE 테슬라밸류체인액티브', { market: '해외' }).countryMix, { 미국: 100 });
+  assert.equal(classifyEtf('PLUS 테슬라위클리커버드콜채권혼합').countryMix, null);
+  // 국내에만 있는 금리·채권 이름은 한국
   assert.deepEqual(classifyEtf('KODEX 머니마켓액티브').countryMix, { 한국: 100 });
   assert.deepEqual(classifyEtf('TIGER CD1년금리액티브(합성)').countryMix, { 한국: 100 });
   assert.deepEqual(classifyEtf('KODEX 국고채3년').countryMix, { 한국: 100 });
   assert.deepEqual(classifyEtf('TIGER 미국달러단기채권액티브').countryMix, { 미국: 100 });
-  assert.deepEqual(classifyEtf('KODEX TDF2050액티브 적격').countryMix, APPROX_COUNTRY_MIXES.allCountry);
   // 이름에 나라 단서가 없을 때 쓸 나라 (국내 채권 ETF)
   assert.deepEqual(classifyEtf('KODEX 종합채권(AA-이상)액티브', { assetType: '채권', fallbackCountry: '한국' }).countryMix, { 한국: 100 });
   assert.deepEqual(classifyEtf('ACE 미국30년국채액티브', { assetType: '채권', fallbackCountry: '한국' }).countryMix, { 미국: 100 });
-  assert.equal(classifyEtf('TIGER 테슬라채권혼합Fn').countryMix, null);
+});
+
+test('다국가 ETF: 비중표에 있는 지수는 비중표로 나누고, 없는 다국가는 글로벌(다국가)', () => {
+  for (const [name, preset] of [
+    ['KODEX MSCI World', 'MSCI World'], ['PLUS 선진국MSCI(합성 H)', 'MSCI World'],
+    ['iShares MSCI ACWI ETF 전세계 ACWI', 'MSCI ACWI'], ['Vanguard Total World Stock ETF 전세계', 'MSCI ACWI'],
+    ['PLUS 신흥국MSCI(합성 H)', 'MSCI EM'], ['KODEX MSCI EM선물(H)', 'MSCI EM'],
+  ]) {
+    const result = classifyEtf(name);
+    assert.equal(result.countryPreset, preset, name);
+    assert.deepEqual(result.countryMix, presetMix(preset), name);
+    assert.equal(result.approx, true, name);
+  }
+  for (const name of ['iShares Core MSCI EAFE ETF 미국 제외 선진국 EAFE', 'TIGER 유로스탁스50(합성 H)', 'TIME 글로벌AI인공지능액티브', 'KODEX TDF2050액티브 적격', 'TIGER 라틴35']) {
+    const result = classifyEtf(name);
+    assert.deepEqual(result.countryMix, { [GLOBAL_COUNTRY]: 100 }, name);
+    assert.equal(result.countryPreset, null, name);
+  }
+  // 해외에 투자하는데 이름으로 나라를 알 수 없으면 글로벌(다국가)
+  assert.deepEqual(classifyEtf('어떤 해외 ETF', { market: '해외' }).countryMix, { [GLOBAL_COUNTRY]: 100 });
+  assert.equal(classifyEtf('KODEX 반도체').countryPreset, null);
+});
+
+test('guessCountry: 개별 주식은 거래소 나라, ETF는 이름에 담긴 투자 대상 (거래소가 한국이어도)', () => {
+  assert.deepEqual(guessCountry({ name: '삼성전자', ticker: 'KRX:005930', type: 'stock' }), { countryMix: { 한국: 100 }, countryPreset: null });
+  assert.deepEqual(guessCountry({ name: 'Apple', ticker: 'NASDAQ:AAPL', type: 'stock' }), { countryMix: { 미국: 100 }, countryPreset: null });
+  assert.equal(guessCountry({ name: '어떤 회사', ticker: 'TSE:7203', type: 'stock' }), null);
+  // 국내 상장 ETF라도 미국에 투자하면 미국
+  assert.deepEqual(guessCountry({ name: 'TIGER 미국S&P500', ticker: 'KRX:360750', type: 'etf' }), { countryMix: { 미국: 100 }, countryPreset: null });
+  assert.deepEqual(guessCountry({ name: 'KODEX 선진국MSCI World', ticker: 'KRX:251350', type: 'etf' }), { countryMix: presetMix('MSCI World'), countryPreset: 'MSCI World' });
+  // 이름에 단서가 없는 ETF는 짐작하지 않는다 (직접 고르게)
+  assert.equal(guessCountry({ name: 'KODEX 반도체', ticker: 'KRX:091160', type: 'etf' }), null);
 });
 
 test('ETF 섹터: 테마 이름이면 그 섹터 100%, 시장 지수면 대략적인 업종 비율, 모르면 null', () => {

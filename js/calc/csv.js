@@ -2,6 +2,8 @@
 // 엑셀·구글 시트에서 표를 복사하면 탭(\t)으로, 직접 적으면 쉼표(,)로 구분된다. 둘 다 받는다.
 
 import { ACCOUNTS, ASSET_CLASSES } from '../constants.js';
+import { guessCountry } from '../classify.js';
+import { COUNTRY_PRESETS, GLOBAL_COUNTRY } from '../country-weights.js';
 import { guessFromTicker, holdingKey, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
 
 // 텍스트를 줄·칸으로 나눈다. 큰따옴표로 감싼 칸 안의 쉼표·줄바꿈과 "" (따옴표 자체)를 처리한다.
@@ -116,6 +118,21 @@ export function parseMixCell(cell) {
   });
 }
 
+// 국가 칸에 비중표 항목 이름(MSCI World 등)을 적었으면 그 이름, 아니면 null (대소문자·띄어쓰기는 따지지 않음)
+function presetOfCell(cell) {
+  const key = (text) => String(text).toUpperCase().replace(/\s+/g, '');
+  return COUNTRY_PRESETS.find((preset) => key(preset) === key(cell)) ?? null;
+}
+
+// 국가 칸을 비웠을 때: 투자 대상을 짐작한다 (ETF는 상장된 나라가 아니라 이름에 담긴 나라).
+// 짐작할 수 없으면 ETF는 글로벌(다국가)(분석 화면에 '국가별 분해 미반영'으로 표시), 개별 주식은 기타.
+function guessCountryInput({ name, ticker, type }) {
+  const guess = guessCountry({ name, ticker, type });
+  if (guess?.countryPreset) return { countryRows: [], countryPreset: guess.countryPreset };
+  const mix = guess?.countryMix ?? { [type === 'etf' ? GLOBAL_COUNTRY : '기타']: 100 };
+  return { countryRows: Object.entries(mix).map(([name, percent]) => ({ name, percent: String(percent) })), countryPreset: '' };
+}
+
 const ENUM_MESSAGES = {
   type: '종류는 "주식" 또는 "ETF"로 적어 주세요.',
   currency: '통화는 KRW 또는 USD로 적어 주세요.',
@@ -145,7 +162,8 @@ function newInput(ticker) {
     manualPrice: '',
     account: '일반',
     assetClass: '기타',
-    countryRows: [{ name: guess?.country ?? '기타', percent: '100' }],
+    countryRows: [],
+    countryPreset: '',
     sectorRows: [{ name: '기타', percent: '100' }],
     dividendPerShare: '',
     memo: '',
@@ -203,7 +221,13 @@ export function parseHoldingsCsv(text, { existing = [], allowFractionalUS = fals
     if (filled('currency')) input.currency = mapAlias(record.currency, CURRENCY_ALIASES);
     if (filled('account')) input.account = record.account;
     if (filled('assetClass')) input.assetClass = record.assetClass;
-    if (filled('country')) input.countryRows = parseMixCell(record.country);
+    if (filled('country')) {
+      const preset = presetOfCell(record.country);
+      input.countryPreset = preset ?? '';
+      input.countryRows = preset ? [] : parseMixCell(record.country);
+    } else if (!current) {
+      Object.assign(input, guessCountryInput(input));
+    }
     if (filled('sector')) input.sectorRows = parseMixCell(record.sector);
     if (has('manualPrice')) input.manualPrice = cleanNumberCell(record.manualPrice);
     if (has('dividendPerShare')) input.dividendPerShare = cleanNumberCell(record.dividendPerShare);

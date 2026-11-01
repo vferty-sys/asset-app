@@ -2,6 +2,7 @@
 
 import { ACCOUNTS, ASSET_CLASSES } from '../constants.js';
 import { HOLDING_CSV_COLUMNS, HOLDING_CSV_TEMPLATE, parseHoldingsCsv } from '../calc/csv.js';
+import { COUNTRY_PRESETS } from '../country-weights.js';
 import { el, clear, openModal, showToast, uid } from '../dom.js';
 
 const COLUMN_HINTS = {
@@ -14,7 +15,7 @@ const COLUMN_HINTS = {
   currency: 'KRW 또는 USD (비우면 티커로 짐작)',
   account: `${ACCOUNTS.join(' / ')} (비우면 일반)`,
   assetClass: `${ASSET_CLASSES.join(' / ')} (비우면 기타)`,
-  country: '예: 미국. ETF는 미국:60;한국:40 처럼 나눠 적기 (비우면 티커로 짐작)',
+  country: `투자 대상 나라. 예: 미국. ETF는 미국:60;한국:40 처럼 나누거나 ${COUNTRY_PRESETS.join('·')} 같은 비중표 이름 (비우면 종목명으로 짐작)`,
   sector: '예: 기술. ETF는 기술:50;통신:15;소비재:35 처럼 나눠 적기 (비우면 기타)',
   manualPrice: '직접 입력할 현재가',
   dividendPerShare: '연간 주당 배당금',

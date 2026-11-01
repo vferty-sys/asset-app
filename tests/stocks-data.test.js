@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { ASSET_CLASSES, COUNTRY_OPTIONS, CURRENCIES, ETF_SPREADS, SECTOR_OPTIONS } from '../js/constants.js';
+import { COUNTRY_PRESETS } from '../js/country-weights.js';
 
 const data = JSON.parse(readFileSync(fileURLToPath(new URL('../data/stocks.json', import.meta.url)), 'utf8'));
 const TICKER = /^(KRX|KOSDAQ|NASDAQ|NYSE|NYSEARCA|NYSEAMERICAN|BATS):[A-Z0-9.]+$|^[A-Z0-9.]+$/;
@@ -47,6 +48,7 @@ test('종목 목록: 모든 종목이 앱에서 쓸 수 있는 값이고 티커�
     if (item.k === 's') assert.ok(typeof item.co === 'string' && typeof item.se === 'string', `개별 주식은 국가·섹터 하나: ${where}`);
     if (item.al) assert.ok(Array.isArray(item.al) && item.al.every((alias) => typeof alias === 'string' && alias), where);
     if (item.sz !== undefined) assert.ok(Number.isInteger(item.sz) && item.sz > 0 && item.sz < 10, `시가총액 자릿수: ${where}`);
+    if (item.cp !== undefined) assert.ok(item.k === 'e' && COUNTRY_PRESETS.includes(item.cp), `국가 비중표 항목: ${where}`);
   }
 });
 
@@ -64,6 +66,10 @@ test('종목 목록: 국내·미국 대표 종목이 들어 있고 분류가 맞
   expect('KRX:069500', { n: 'KODEX 200', k: 'e', co: '한국', sp: 'market', a: '성장주', g: 'kr-etf' });
   expect('KRX:360750', { co: '미국', sp: 'market' }); // TIGER 미국S&P500
   expect('KRX:122630', { sp: 'single' }); // KODEX 레버리지
+  // 국내 상장이어도 투자 대상 나라로: 미국 지수는 미국, 다국가 지수는 국가 비중표
+  expect('KRX:133690', { co: '미국' }); // TIGER 미국나스닥100
+  expect('NYSEARCA:VT', { cp: 'MSCI ACWI' });
+  expect('NYSE:TSM', { co: '대만' });
   expect('NASDAQ:AAPL', { co: '미국', se: '기술', g: 'us' });
   assert.ok(data.counts.kr > 2000 && data.counts['kr-etf'] > 600, `국내 개수 ${data.counts.kr}, ${data.counts['kr-etf']}`);
 });

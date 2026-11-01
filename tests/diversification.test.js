@@ -4,7 +4,7 @@ import {
   analyzeDiversification, concentrationAlerts, holdingWeights, largestOf, splitByMix, toBreakdown,
 } from '../js/calc/diversification.js';
 import { valuePortfolio } from '../js/calc/valuation.js';
-import { DEFAULT_SETTINGS, NON_SECTOR_NAMES } from '../js/constants.js';
+import { DEFAULT_SETTINGS, NON_COUNTRY_NAMES, NON_SECTOR_NAMES } from '../js/constants.js';
 
 const near = (actual, expected, message) => assert.ok(Math.abs(actual - expected) < 1e-9, `${message ?? ''} ${actual} ≠ ${expected}`);
 
@@ -45,6 +45,36 @@ test('요청서 6-2: 국가 비중 = Σ(평가금액 × countryMix / 100) / 합�
   near(weightOf(country, '미국'), 0.8);
   near(weightOf(country, '한국'), 0.2);
   assert.deepEqual(country.map((item) => item.name), ['미국', '한국']);
+});
+
+test('국가 쏠림 규격: 다국가 ETF는 비중표로 나눠 나라별로 더한다 (국가 i 비중 = Σ 평가금액 × i 비중 / 합계)', () => {
+  const rows = rowsOf([
+    holding('samsung', 1_000_000, { countryMix: { 한국: 100 } }), // 개별 주식: 본사 나라
+    holding('sp500', 1_000_000, { type: 'etf', countryMix: { 미국: 100 } }), // 국내 상장이어도 미국에 투자
+    holding('world', 1_000_000, { type: 'etf', countryMix: { 한국: 100 }, countryPreset: 'MSCI World' }), // 비중표가 우선
+    holding('em', 1_000_000, { type: 'etf', countryPreset: 'MSCI EM' }),
+  ]);
+  const { country } = analyzeDiversification(rows);
+  near(weightOf(country, '미국'), (1 + 0.72) / 4);
+  near(weightOf(country, '한국'), (1 + 0.09) / 4);
+  near(weightOf(country, '중국'), 0.28 / 4);
+  near(weightOf(country, '일본'), 0.055 / 4);
+  near(weightOf(country, '기타'), (0.065 + 0.195) / 4);
+  near(country.reduce((sum, item) => sum + item.weight, 0), 1);
+  assert.equal(weightOf(country, '미분류'), 0);
+});
+
+test('비중표에 없는 다국가 ETF는 글로벌(다국가)로 모으고, 국가 쏠림 경고·점수에서는 뺀다', () => {
+  const rows = rowsOf([
+    holding('kr', 3_000_000, { countryMix: { 한국: 100 } }),
+    holding('global', 7_000_000, { type: 'etf', countryMix: { '글로벌(다국가)': 100 } }),
+    holding('gone', 1_000_000, { type: 'etf', countryMix: { 미국: 100 }, countryPreset: '비중표에서 빠진 지수' }),
+  ]);
+  const stocks = analyzeDiversification(rows);
+  near(weightOf(stocks.country, '글로벌(다국가)'), 8 / 11);
+  assert.equal(largestOf(stocks.country, NON_COUNTRY_NAMES).name, '한국');
+  const alerts = concentrationAlerts({ ...stocks, holdings: [] }, { ...DEFAULT_SETTINGS, warnSector: 100 });
+  assert.deepEqual(alerts.filter((alert) => alert.kind === 'country').map((alert) => alert.name), []);
 });
 
 test('섹터 비율 합계가 100이 아닌 ETF는 나머지를 미분류로 보여준다', () => {

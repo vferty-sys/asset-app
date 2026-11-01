@@ -649,6 +649,22 @@ select.input {
   gap: 8px;
 }
 
+/* 국가 입력: ETF는 입력 방식(한 나라·비중표·직접 나누기·미분류)을 먼저 고른다 */
+.country-editor,
+.country-preset {
+  display: grid;
+  gap: 8px;
+}
+
+.country-modes .segmented-option span {
+  padding: 0 2px;
+  font-size: 0.8125rem;
+}
+
+.country-preview {
+  margin: 0;
+}
+
 .mix-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 96px 40px;

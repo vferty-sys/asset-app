@@ -1,8 +1,10 @@
 // 종목 자동 분류: 업종(국내 네이버 금융 업종·미국 GICS)과 ETF 이름·분류로 국가·섹터·자산군·ETF 분산 정도를 짐작한다.
 // 종목 목록(data/stocks.json)을 만드는 스크립트와 종목 입력 화면이 함께 쓴다. 짐작이라 사용자가 언제든 바꿀 수 있다.
 // 비율(mix)은 { 이름: 퍼센트 } 형태이고, 모르면 null.
+// 국가는 실제 투자 대상 기준: 개별 주식은 본사 나라, ETF는 상장된 나라가 아니라 담은 회사들의 나라로 본다.
 
-import { guessEtfSpread } from './holding.js';
+import { GLOBAL_COUNTRY, presetMix, singleCountryOf } from './country-weights.js';
+import { guessEtfSpread, guessFromTicker } from './holding.js';
 
 // ── 지수 구성 대략값 (2025년 무렵 기준, 업종·국가 비율 %) ─────────────
 // ETF의 실제 비율은 운용사 홈페이지에서 확인해야 해서, 화면에 "대략값"이라고 함께 알린다.
@@ -15,13 +17,6 @@ export const APPROX_SECTOR_MIXES = Object.freeze({
   russell2000: { 산업재: 17, 금융: 17, 헬스케어: 16, 기술: 14, 소비재: 10, 에너지: 6, 부동산: 6, 소재: 4, 유틸리티: 3, 필수소비재: 3, 통신: 2, 기타: 2 },
   world: { 기술: 26, 금융: 16, 헬스케어: 10, 산업재: 11, 소비재: 10, 통신: 8, 필수소비재: 6, 에너지: 4, 소재: 4, 유틸리티: 3, 부동산: 2 },
   usDividend: { 에너지: 20, 필수소비재: 19, 헬스케어: 16, 산업재: 12, 금융: 9, 기술: 9, 소비재: 8, 통신: 4, 소재: 3 },
-});
-
-export const APPROX_COUNTRY_MIXES = Object.freeze({
-  world: { 미국: 72, 유럽: 15, 일본: 5, 기타: 8 },
-  allCountry: { 미국: 64, 유럽: 13, 일본: 5, 중국: 3, 신흥국: 7, 기타: 8 },
-  developedExUs: { 유럽: 62, 일본: 22, 기타: 16 },
-  emerging: { 중국: 27, 신흥국: 73 },
 });
 
 // ── 국내 주식: 네이버 금융 업종 → 앱 섹터 ─────────────────────────
@@ -106,19 +101,45 @@ const OTHER = /금현물|골드|GOLD|은선물|SILVER|원유|WTI|원자재|구�
 const DIVIDEND = /배당|DIVIDEND|커버드콜|COVERED ?CALL|인컴|INCOME|프리미엄|은행|BANK|보험|INSURANCE/i;
 const INVERSE = /인버스|곱버스|INVERSE|SHORT|BEAR/i;
 
+// 이름으로 투자 대상 나라 짐작. 앞에서부터 처음 맞는 규칙을 쓴다. (그 전에 비중표의 한 나라 지수 이름을 먼저 본다)
+//  country: 그 나라 100% / preset: 국가 비중표 항목으로 나눔 / global: 비중표에 없는 다국가 → 글로벌(다국가)
 const COUNTRY_RULES = [
-  [/MSCI ?(WORLD|월드)|선진국|DEVELOPED|월드/i, null, 'world'],
-  [/ACWI|전세계|ALL ?COUNTRY|올월드|올 월드|ALL-?WORLD|글로벌|GLOBAL|TDF/i, null, 'allCountry'],
-  [/EAFE|미국 ?제외|EX-?US/i, null, 'developedExUs'],
-  [/신흥국|이머징|EMERGING/i, null, 'emerging'],
-  [/미국|S&P|나스닥|NASDAQ|다우|DOW|필라델피아|러셀|RUSSELL|\bUS\b|U\.S\./i, { 미국: 100 }],
-  [/중국|차이나|CHINA|항셍|HANG ?SENG|CSI|홍콩|HONG ?KONG/i, { 중국: 100 }],
-  [/일본|JAPAN|니케이|NIKKEI|TOPIX|토픽스/i, { 일본: 100 }],
-  [/유럽|EURO|유로|독일|GERMANY|DAX|STOXX|영국|프랑스/i, { 유럽: 100 }],
-  [/인도|INDIA|니프티|NIFTY|베트남|VIETNAM|인도네시아|INDONESIA|브라질|BRAZIL|라틴|멕시코|대만|TAIWAN/i, { 신흥국: 100 }],
+  [/EAFE|미국 ?제외|EX-?US/i, { global: true }], // 미국 밖 선진국
+  [/ACWI|전세계|ALL ?COUNTRY|올월드|올 월드|ALL-?WORLD/i, { preset: 'MSCI ACWI' }],
+  [/MSCI ?(WORLD|월드)|선진국|DEVELOPED|월드/i, { preset: 'MSCI World' }],
+  [/신흥국|이머징|EMERGING|\bEM\b/i, { preset: 'MSCI EM' }],
+  [/미국|S&P|나스닥|NASDAQ|다우|DOW|필라델피아|러셀|RUSSELL|\bUS\b|U\.S\./i, { country: '미국' }],
+  [/중국|차이나|CHINA|항셍|HANG ?SENG|CSI|홍콩|HONG ?KONG|심천|차이넥스트|CHINEXT/i, { country: '중국' }],
+  [/일본|JAPAN|니케이|NIKKEI|TOPIX|토픽스/i, { country: '일본' }],
+  [/대만|TAIWAN/i, { country: '대만' }],
+  [/인도(?!네시아)|INDIA|니프티|NIFTY/i, { country: '인도' }],
+  [/베트남|VIETNAM|VN30/i, { country: '베트남' }],
+  [/영국|\bUK\b|UNITED KINGDOM/i, { country: '영국' }],
+  [/독일|GERMANY|DAX/i, { country: '독일' }],
+  [/프랑스|FRANCE|CAC ?40/i, { country: '프랑스' }],
+  [/스위스|SWITZERLAND|SWISS/i, { country: '스위스' }],
+  [/캐나다|CANADA|TSX/i, { country: '캐나다' }],
+  [/호주|AUSTRALIA|ASX/i, { country: '호주' }],
+  [/브라질|BRAZIL|보베스파|BOVESPA/i, { country: '브라질' }],
+  [/인도네시아|INDONESIA|멕시코|MEXICO|러시아|RUSSIA/i, { country: '신흥국' }], // 선택지에 없는 신흥국 한 나라
+  // 한 회사와 그 협력사에 투자하는 ETF (테슬라밸류체인 등): 그 회사의 나라. 채권혼합은 국내 채권이 섞여 있어 빼고 직접 고르게 한다
+  [/^(?!.*채권혼합).*(테슬라|TESLA|엔비디아|NVIDIA|애플|APPLE|아마존|AMAZON|마이크로소프트|MICROSOFT|구글|GOOGLE|알파벳|브로드컴|BROADCOM|팔란티어|PALANTIR|버크셔|일라이 ?릴리|스페이스 ?X|리얼티 ?인컴)/i, { country: '미국' }],
+  [/^(?!.*채권혼합).*(BYD|샤오미|XIAOMI)/i, { country: '중국' }],
+  [/^(?!.*채권혼합).*TSMC/i, { country: '대만' }],
+  [/유럽|EURO|유로|STOXX|라틴|LATIN|아시아|ASIA/i, { global: true }], // 여러 나라 지역: 비중표에 없음
+  [/글로벌|GLOBAL|TDF/i, { global: true }],
   // 다른 나라 단서가 없을 때: 국내에만 있는 금리·채권 이름이나 '코리아·한국'이면 한국
-  [/CD\s?(1년)?금리|KOFR|통안|머니마켓|국고채|국공채|전단채|코리아|한국/i, { 한국: 100 }],
+  [/CD\s?(1년)?금리|KOFR|통안|머니마켓|국고채|국공채|전단채|코리아|한국/i, { country: '한국' }],
 ];
+
+// 이름으로 나라를 짐작한다. 돌려주는 값: { countryMix, countryPreset } (단서가 없으면 null)
+function countryFromName(text) {
+  const single = singleCountryOf(text);
+  const rule = single ? { country: single } : COUNTRY_RULES.find(([pattern]) => pattern.test(text))?.[1];
+  if (!rule) return null;
+  if (rule.preset) return { countryMix: presetMix(rule.preset), countryPreset: rule.preset };
+  return { countryMix: { [rule.global ? GLOBAL_COUNTRY : rule.country]: 100 }, countryPreset: null };
+}
 
 const INDEX_SECTORS = [
   [/코스닥 ?150|KOSDAQ ?150/i, 'kosdaq150'],
@@ -149,7 +170,8 @@ const THEME_SECTORS = [
 //   market: '국내' | '해외', assetType: '주식' | '채권' | '원자재' | '통화' | '부동산' | '혼합자산' …, index: 기초지수 이름,
 //   broadIndex: 기초지수가 시장 전체 지수인지 (네이버 금융 '국내 시장지수' 분류),
 //   fallbackCountry: 이름에 나라 단서가 없을 때 쓸 나라 (예: 국내 채권 ETF는 '한국'), ticker: 티커 (분산 정도 짐작에 씀)
-// 돌려주는 값: { assetClass, countryMix, sectorMix, spread, approx } — 모르는 항목은 null, approx는 대략값을 썼는지
+// 돌려주는 값: { assetClass, countryMix, countryPreset, sectorMix, spread, approx } — 모르는 항목은 null,
+//   countryPreset은 국가 비중표 항목 이름(다국가 지수), approx는 대략값을 썼는지
 export function classifyEtf(name, {
   market = null, assetType = null, index = '', broadIndex = false, fallbackCountry = null, ticker = '',
 } = {}) {
@@ -164,21 +186,19 @@ export function classifyEtf(name, {
   else if (DIVIDEND.test(text)) assetClass = '배당주';
 
   let countryMix = null;
+  let countryPreset = null;
   if (assetType === '원자재' || /금현물|골드|GOLD|은선물|SILVER|원유|WTI|원자재|구리|농산물|COMMODIT/i.test(text)) countryMix = { 기타: 100 };
-  else if (market === '국내') countryMix = { 한국: 100 };
+  else if (market === '국내') countryMix = { 한국: 100 }; // 국내 주식에 투자하는 ETF (목록이 알려준 분류)
   else {
-    for (const [pattern, mix, approxKey] of COUNTRY_RULES) {
-      if (!pattern.test(text)) continue;
-      if (approxKey) {
-        countryMix = { ...APPROX_COUNTRY_MIXES[approxKey] };
-        approx = true;
-      } else {
-        countryMix = { ...mix };
-      }
-      break;
+    const byName = countryFromName(text);
+    if (byName) {
+      ({ countryMix, countryPreset } = byName);
+      if (countryPreset) approx = true;
+    } else if (market === '해외') {
+      countryMix = { [GLOBAL_COUNTRY]: 100 }; // 해외에 투자하지만 어느 나라인지 이름으로 알 수 없음
+    } else if (fallbackCountry) {
+      countryMix = { [fallbackCountry]: 100 };
     }
-    if (!countryMix && market === '해외') countryMix = { 기타: 100 };
-    if (!countryMix && fallbackCountry) countryMix = { [fallbackCountry]: 100 };
   }
 
   let sectorMix = null;
@@ -207,5 +227,18 @@ export function classifyEtf(name, {
   const byName = guessEtfSpread({ name, ticker });
   const marketIndex = broadIndex || (index && guessEtfSpread({ name: index }) === 'market');
   const spread = byName === 'theme' && marketIndex ? 'market' : byName;
-  return { assetClass, countryMix, sectorMix, spread, approx };
+  return { assetClass, countryMix, countryPreset, sectorMix, spread, approx };
+}
+
+// 종목 목록에 없는 종목의 나라 짐작 (입력 화면·CSV·예전 데이터 점검).
+//  개별 주식: 상장 거래소의 나라 (본사가 다른 나라면 사용자가 고친다)
+//  ETF: 상장된 나라가 아니라 이름에 담긴 투자 대상. 이름에 단서가 없으면 null (직접 고르게 한다)
+// 돌려주는 값: { countryMix, countryPreset } 또는 null
+export function guessCountry({ name = '', ticker = '', type = 'stock' } = {}) {
+  if (type === 'etf') {
+    const { countryMix, countryPreset } = classifyEtf(name, { ticker });
+    return countryMix ? { countryMix, countryPreset } : null;
+  }
+  const country = guessFromTicker(ticker)?.country;
+  return country ? { countryMix: { [country]: 100 }, countryPreset: null } : null;
 }
