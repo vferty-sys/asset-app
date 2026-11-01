@@ -6,7 +6,8 @@ import { testConnection } from '../market.js';
 import { el, helpTip, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
 import { createField, createToggleField, selectInput, textInput } from './form.js';
-import { dataSection, installSection } from './data-tools.js';
+import { dataSection, downloadBackup, installSection } from './data-tools.js';
+import { syncSection } from './sync-ui.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}월`]);
 // 시트에서 달러 환율을 받는 줄 (apps-script/Code.gs가 CURRENCY:로 시작하는 줄을 환율로 읽는다)
@@ -199,7 +200,7 @@ function createControl(field, value) {
   }
 }
 
-export function render(root, { getState, updateState, navigate }) {
+export function render(root, { getState, updateState, navigate, subscribe, sync }) {
   const hintUpdaters = [];
   const refreshHints = () => {
     const { settings } = getState();
@@ -278,6 +279,8 @@ export function render(root, { getState, updateState, navigate }) {
 
   root.append(el('p', { class: 'page-lead', text: '바꾼 내용은 바로 저장돼요.' }));
 
+  // 기기 연동은 같은 웹 앱 주소를 쓰므로 '시세 연결' 바로 아래에 둔다
+  const syncPart = sync ? syncSection({ getState, subscribe, sync, downloadBackup: () => downloadBackup({ getState, updateState }) }) : null;
   for (const section of SECTIONS) {
     root.append(
       el('section', { class: 'card settings-section' },
@@ -285,11 +288,15 @@ export function render(root, { getState, updateState, navigate }) {
         section.description ? el('p', { class: 'section-desc', text: section.description }) : null,
         section.fields.map((field) => (field.kind === 'group' ? renderGroup(field) : renderField(field)))),
     );
+    if (section.title === '시세 연결' && syncPart) root.append(syncPart.element);
   }
 
   const install = installSection();
-  root.append(dataSection({ getState, updateState, navigate }), install.element);
+  root.append(dataSection({ getState, updateState, navigate, sync }), install.element);
 
   refreshHints();
-  return install.cleanup;
+  return () => {
+    install.cleanup?.();
+    syncPart?.cleanup();
+  };
 }

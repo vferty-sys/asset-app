@@ -49,6 +49,17 @@ export function updateState(mutate) {
   notify();
 }
 
+// 자산 데이터를 저장할 곳을 바꾼다 (기기 연동에서 '비밀번호 기억하지 않기'를 켜고 끌 때). 지금 데이터를 새 곳에 바로 저장한다.
+export function switchBackend(next) {
+  backend = next;
+  if (!persistEnabled) return;
+  try {
+    saveData(backend, current);
+  } catch (error) {
+    handleSaveError(error);
+  }
+}
+
 // 백업 복원·샘플 불러오기처럼 데이터 전체를 바꿀 때
 export function replaceState(next) {
   updateState((draft) => {
