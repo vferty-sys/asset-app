@@ -1,5 +1,5 @@
 // 구글 시트(Apps Script 웹 앱)에서 시세 받아오기, 응답 검사, 마지막 시세 캐시.
-// 앱이 밖으로 보내는 요청은 사용자가 설정한 시트 주소로의 GET 하나뿐이고, 개인 데이터는 보내지 않는다.
+// 시세 요청은 사용자가 설정한 시트 주소로의 GET 하나이고, 개인 데이터는 보내지 않는다. (기기 연동 요청은 sync.js)
 
 import { STORAGE_KEYS } from './constants.js';
 import { resolveFx } from './calc/valuation.js';

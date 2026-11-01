@@ -1,114 +1,9 @@
 // apps-script/Code.gs를 Node에서 가짜 구글 시트로 실행해 본다.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import vm from 'node:vm';
+import { randomBytes } from 'node:crypto';
 import { parseSheetResponse } from '../js/price.js';
-
-const CODE = readFileSync(new URL('../apps-script/Code.gs', import.meta.url), 'utf8');
-
-class FakeRange {
-  constructor(sheet, row, column, numRows = 1, numColumns = 1) {
-    Object.assign(this, { sheet, row, column, numRows, numColumns });
-  }
-
-  forEachCell(fn) {
-    for (let r = 0; r < this.numRows; r += 1) {
-      for (let c = 0; c < this.numColumns; c += 1) fn(this.row + r, this.column + c, r, c);
-    }
-  }
-
-  getValues() {
-    return Array.from({ length: this.numRows }, (_, r) => Array.from({ length: this.numColumns }, (__, c) => this.sheet.cell(this.row + r, this.column + c).value));
-  }
-
-  getValue() { return this.sheet.cell(this.row, this.column).value; }
-
-  setValue(value) {
-    this.sheet.write(this.row, this.column, { value, formula: '' });
-    return this;
-  }
-
-  setValues(values) {
-    this.forEachCell((row, column, r, c) => this.sheet.write(row, column, { value: values[r][c], formula: '' }));
-    return this;
-  }
-
-  getFormula() { return this.sheet.cell(this.row, this.column).formula; }
-
-  setFormula(formula) {
-    this.sheet.write(this.row, this.column, { value: this.getValue(), formula });
-    return this;
-  }
-
-  clearContent() {
-    this.forEachCell((row, column) => this.sheet.write(row, column, { value: '', formula: '' }));
-    return this;
-  }
-
-  setFontWeight() { return this; }
-
-  getRow() { return this.row; }
-
-  getColumn() { return this.column; }
-
-  getLastRow() { return this.row + this.numRows - 1; }
-
-  getSheet() { return this.sheet; }
-}
-
-class FakeSheet {
-  constructor(name, id, rows = []) {
-    this.name = name;
-    this.id = id;
-    this.cells = new Map();
-    rows.forEach((line, r) => line.forEach((value, c) => this.write(r + 1, c + 1, { value, formula: '' })));
-  }
-
-  cell(row, column) { return this.cells.get(`${row},${column}`) ?? { value: '', formula: '' }; }
-
-  write(row, column, cell) {
-    const key = `${row},${column}`;
-    if (cell.value === '' && !cell.formula) this.cells.delete(key);
-    else this.cells.set(key, cell);
-  }
-
-  getLastRow() {
-    return Math.max(0, ...[...this.cells.keys()].map((key) => Number(key.split(',')[0])));
-  }
-
-  getRange(row, column, numRows, numColumns) { return new FakeRange(this, row, column, numRows, numColumns); }
-
-  getSheetId() { return this.id; }
-
-  getName() { return this.name; }
-
-  setFrozenRows() {}
-
-  autoResizeColumns() {}
-}
-
-function load(sheets) {
-  const spreadsheet = {
-    sheets,
-    getSheetByName: (name) => sheets.find((sheet) => sheet.name === name) ?? null,
-    getSheets: () => sheets,
-    insertSheet(name, index) {
-      const sheet = new FakeSheet(name, 100 + sheets.length);
-      sheets.splice(index, 0, sheet);
-      return sheet;
-    },
-  };
-  const context = vm.createContext({
-    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
-    ContentService: {
-      MimeType: { JSON: 'application/json' },
-      createTextOutput: (text) => ({ setMimeType: (mimeType) => ({ text, mimeType }) }),
-    },
-  });
-  vm.runInContext(CODE, context);
-  return { context, spreadsheet };
-}
+import { FakeSheet, load } from './helpers/apps-script-harness.js';
 
 const HEADER = ['티커', '가격', '통화'];
 
@@ -254,4 +149,89 @@ test('onEdit: 여러 줄 붙여넣기는 줄마다, 제목 줄·다른 열·다�
   other.write(2, 1, { value: 'KRX:005930', formula: '' });
   context.onEdit({ range: other.getRange(2, 1) });
   assert.equal(other.cell(2, 2).formula, '');
+});
+
+// ── 기기 연동 ─────────────────────────────────────────
+const post = (context, body) => JSON.parse(context.doPost({ postData: { contents: JSON.stringify(body) } }).text);
+const info = (context) => JSON.parse(context.doGet({ parameter: { action: 'sync-info' } }).text);
+const payloadOf = (size = 120) => ({ iv: randomBytes(12).toString('base64'), zip: 'gzip', data: randomBytes(size).toString('base64') });
+const SALT = randomBytes(16).toString('base64');
+
+function setupSync() {
+  const sheets = [new FakeSheet('시세', 1, [HEADER, ['NASDAQ:QQQ', 512.3, 'USD']])];
+  const { context } = load(sheets);
+  const first = payloadOf();
+  const result = post(context, { action: 'sync-setup', salt: SALT, hint: '첫 강아지', auth: 'secret-auth', device: '노트북', payload: first });
+  return { context, sheets, first, result };
+}
+
+test('기기 연동: 켜기 전 상태, 처음 켜면 숨긴 탭에 솔트·힌트·확인값과 첫 데이터를 저장', () => {
+  const sheets = [new FakeSheet('시세', 1, [HEADER])];
+  assert.deepEqual(info(load(sheets).context), { sync: 1, exists: false });
+
+  const { context, sheets: all, result } = setupSync();
+  assert.equal(result.ok, true);
+  assert.equal(result.revision, 1);
+  const tab = all.find((sheet) => sheet.name === '앱 데이터');
+  assert.ok(tab.hidden, '앱 데이터 탭은 숨긴다');
+  const state = info(context);
+  assert.deepEqual({ ...state, savedAt: typeof state.savedAt }, { sync: 1, exists: true, salt: SALT, hint: '첫 강아지', revision: 1, savedAt: 'string', device: '노트북' });
+  // 비밀번호로 만든 auth는 그대로 저장하지 않고 SHA-256 확인값만 둔다
+  const stored = [...tab.cells.values()].map((cell) => String(cell.value));
+  assert.ok(!stored.some((value) => value.includes('secret-auth')));
+  // 이미 켜져 있으면 다시 켜지 않는다 (덮어쓰기 방지)
+  assert.equal(post(context, { action: 'sync-setup', salt: SALT, hint: '', auth: 'other', device: 'x', payload: payloadOf() }).error, 'exists');
+  // 시세 응답은 그대로
+  assert.deepEqual(Object.keys(JSON.parse(context.doGet().text).prices), ['NASDAQ:QQQ']);
+});
+
+test('기기 연동: 비밀번호 확인값이 맞아야 불러오고, 데이터는 보낸 그대로 돌려준다', () => {
+  const { context, first } = setupSync();
+  assert.equal(post(context, { action: 'sync-load', auth: 'wrong' }).error, 'auth');
+  assert.equal(post(context, { action: 'sync-load' }).error, 'auth');
+  const loaded = post(context, { action: 'sync-load', auth: 'secret-auth' });
+  assert.deepEqual([loaded.revision, loaded.iv, loaded.zip, loaded.data, loaded.device], [1, first.iv, 'gzip', first.data, '노트북']);
+});
+
+test('기기 연동: 마지막으로 받은 번호가 같을 때만 저장하고, 다르면 다른 기기가 먼저 저장했다고 알려준다', () => {
+  const { context } = setupSync();
+  const saved = post(context, { action: 'sync-save', auth: 'secret-auth', baseRevision: 1, device: '회사 PC', payload: payloadOf() });
+  assert.deepEqual([saved.ok, saved.revision], [true, 2]);
+  // 노트북은 아직 1번을 들고 있음 → 덮어쓰지 않음
+  const conflict = post(context, { action: 'sync-save', auth: 'secret-auth', baseRevision: 1, device: '노트북', payload: payloadOf() });
+  assert.deepEqual([conflict.conflict, conflict.revision, conflict.device], [true, 2, '회사 PC']);
+  assert.equal(info(context).revision, 2);
+  // 비밀번호가 틀리면 저장하지 않음
+  assert.equal(post(context, { action: 'sync-save', auth: 'nope', baseRevision: 2, device: 'x', payload: payloadOf() }).error, 'auth');
+  // 형식이 틀린 데이터는 저장하지 않음
+  assert.equal(post(context, { action: 'sync-save', auth: 'secret-auth', baseRevision: 2, device: 'x', payload: { iv: '!!', data: '<script>' } }).error, 'format');
+});
+
+test('기기 연동: 큰 데이터는 여러 칸에 나눠 저장하고 그대로 합쳐 돌려준다', () => {
+  const { context } = setupSync();
+  const big = payloadOf(90_000); // base64 120,000자 → 3칸
+  post(context, { action: 'sync-save', auth: 'secret-auth', baseRevision: 1, device: '노트북', payload: big });
+  assert.equal(post(context, { action: 'sync-load', auth: 'secret-auth' }).data, big.data);
+});
+
+test('기기 연동: 최신 1개 + 예전 기록 10개를 남기고, 예전 번호로 불러올 수 있다', () => {
+  const { context } = setupSync();
+  const payloads = {};
+  for (let revision = 2; revision <= 15; revision += 1) {
+    payloads[revision] = payloadOf();
+    post(context, { action: 'sync-save', auth: 'secret-auth', baseRevision: revision - 1, device: revision % 2 ? '노트북' : '회사 PC', payload: payloads[revision] });
+  }
+  const history = post(context, { action: 'sync-history', auth: 'secret-auth' });
+  assert.deepEqual(history.records.map((record) => record.revision), [15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5]);
+  assert.equal(post(context, { action: 'sync-load', auth: 'secret-auth', revision: 9 }).data, payloads[9].data);
+  assert.equal(post(context, { action: 'sync-load', auth: 'secret-auth', revision: 2 }).error, 'not-found');
+  assert.equal(post(context, { action: 'sync-history', auth: 'nope' }).error, 'auth');
+});
+
+test('기기 연동: 이상한 요청은 오류로 답한다', () => {
+  const { context } = setupSync();
+  assert.equal(post(context, { action: 'drop-table' }).error, 'action');
+  assert.equal(JSON.parse(context.doPost({ postData: { contents: '{not json' } }).text).error, 'server');
+  const sheets = [new FakeSheet('시세', 1, [HEADER])];
+  assert.equal(post(load(sheets).context, { action: 'sync-load', auth: 'x' }).error, 'not-setup');
 });

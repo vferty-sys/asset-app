@@ -6,7 +6,7 @@ import { clearAllData, replaceState } from '../state.js';
 import { createSampleData } from '../sample-data.js';
 import { todayString } from '../dates.js';
 import { canPromptInstall, isStandalone, promptInstall, subscribeInstall } from '../install.js';
-import { el, closeAllModals, confirmDialog, showToast, uid } from '../dom.js';
+import { el, closeAllModals, confirmDialog, openModal, showToast, uid } from '../dom.js';
 import { formatDate } from '../format.js';
 import { openOnboarding } from './onboarding.js';
 
@@ -37,13 +37,49 @@ function freshData() {
   return data;
 }
 
+// 백업 파일 내려받기 (내 데이터 칸과 기기 연동의 '이 기기 내용 백업 받기'가 함께 쓴다)
+export function downloadBackup({ getState, updateState }) {
+  download(createBackup(getState()), `${BACKUP_FILE_PREFIX}${todayString()}.json`);
+  updateState((draft) => { draft.meta.lastBackupAt = todayString(); });
+  showToast('백업 파일을 내려받았어요');
+}
+
+// 기기 연동 중에 '모든 데이터 초기화'를 누르면 어디까지 지울지 묻는다: 'device' | 'all' | null
+function chooseResetScope() {
+  return new Promise((resolve) => {
+    let choice = null;
+    const pick = (value) => () => {
+      choice = value;
+      close();
+    };
+    const cancel = el('button', { type: 'button', class: 'btn', text: '취소' });
+    const device = el('button', { type: 'button', class: 'btn btn-danger', text: '이 기기만 초기화' });
+    const all = el('button', { type: 'button', class: 'btn btn-danger-solid', text: '모든 기기에서 지우기' });
+    const { close } = openModal({
+      title: '모든 데이터 초기화',
+      size: 'sm',
+      body: el('div', { class: 'form' },
+        el('p', { text: '기기 연동 중이에요. 어디까지 지울까요?' }),
+        el('ul', { class: 'reset-scope' },
+          el('li', {}, el('strong', { text: '이 기기만 초기화: ' }), '이 기기의 데이터를 지우고 연동을 꺼요. 시트와 다른 기기의 데이터는 그대로예요.'),
+          el('li', {}, el('strong', { text: '모든 기기에서 지우기: ' }), '모든 기기의 자산 데이터를 비워요. 지우기 전 내용은 저장 기록에 남아서 되돌릴 수 있어요.'))),
+      footer: [cancel, el('span', { class: 'spacer' }), device, all],
+      onClose: () => resolve(choice),
+    });
+    cancel.addEventListener('click', pick(null));
+    device.addEventListener('click', pick('device'));
+    all.addEventListener('click', pick('all'));
+  });
+}
+
 // 샘플 데이터 불러오기. 내 데이터가 있으면 먼저 묻는다.
-export async function loadSample({ getState, navigate }) {
+export async function loadSample({ getState, navigate, sync }) {
   const state = getState();
-  if (hasData(state) && !state.meta.sample) {
+  if ((hasData(state) && !state.meta.sample) || sync?.config) {
+    const synced = sync?.config ? ' 기기 연동 중이라 다른 기기의 데이터도 샘플로 바뀌어요 (저장 기록에서 되돌릴 수 있어요).' : '';
     const confirmed = await confirmDialog({
       title: '샘플 데이터 불러오기',
-      message: `지금 입력한 데이터(${describe(state)})가 모두 샘플로 바뀌어요. 필요하면 먼저 백업 파일을 내려받으세요.`,
+      message: `지금 입력한 데이터(${describe(state)})가 모두 샘플로 바뀌어요. 필요하면 먼저 백업 파일을 내려받으세요.${synced}`,
       confirmText: '샘플로 바꾸기',
       danger: true,
     });
@@ -101,7 +137,7 @@ function showWipedScreen(removed) {
   restart.focus();
 }
 
-export function dataSection({ getState, updateState, navigate }) {
+export function dataSection({ getState, updateState, navigate, sync }) {
   const result = el('div', { class: 'data-result', role: 'status', hidden: true });
   const showResult = (tone, text) => {
     result.className = `data-result banner banner-${tone}`;
@@ -121,11 +157,9 @@ export function dataSection({ getState, updateState, navigate }) {
     class: 'btn btn-primary',
     text: '백업 파일 내려받기',
     onClick: () => {
-      download(createBackup(getState()), `${BACKUP_FILE_PREFIX}${todayString()}.json`);
-      updateState((draft) => { draft.meta.lastBackupAt = todayString(); });
+      downloadBackup({ getState, updateState });
       refreshLastBackup();
       result.hidden = true;
-      showToast('백업 파일을 내려받았어요');
     },
   });
 
@@ -164,7 +198,7 @@ export function dataSection({ getState, updateState, navigate }) {
     }
     const confirmed = await confirmDialog({
       title: '백업 파일로 복원',
-      message: `${exportedAt ? `${formatDate(exportedAt)}에 내려받은 ` : ''}백업(${describe(data)})으로 바꿀까요? 지금 이 기기의 데이터는 지워져요.`,
+      message: `${exportedAt ? `${formatDate(exportedAt)}에 내려받은 ` : ''}백업(${describe(data)})으로 바꿀까요? 지금 이 기기의 데이터는 지워져요.${sync?.config ? ' 기기 연동 중이라 다른 기기에도 반영돼요.' : ''}`,
       confirmText: '복원하기',
       danger: true,
     });
@@ -180,6 +214,23 @@ export function dataSection({ getState, updateState, navigate }) {
     class: 'btn btn-danger',
     text: '모든 데이터 초기화',
     onClick: async () => {
+      if (sync?.config) {
+        const scope = await chooseResetScope();
+        if (scope === 'device') {
+          sync.wipeDevice();
+          clearAllData();
+          window.location.hash = 'dashboard';
+          window.location.reload();
+        } else if (scope === 'all') {
+          // 시트 주소는 남겨 둔다 (모든 기기의 시세 연결이 끊기지 않게)
+          const fresh = freshData();
+          fresh.settings.sheetUrl = getState().settings.sheetUrl;
+          const status = await sync.resetEverywhere(fresh);
+          if (status.state === 'synced') showToast('모든 기기에서 지웠어요. 저장 기록에서 되돌릴 수 있어요');
+          else showResult('danger', status.message ?? '지우지 못했어요. "지금 맞추기"를 한 뒤 다시 해 주세요.');
+        }
+        return;
+      }
       const confirmed = await confirmDialog({
         title: '모든 데이터 초기화',
         message: '보유 종목, 공제회·예적금, 연금, 목표 비중, 월별 기록, 설정(시트 주소 포함)을 모두 지우고 처음 상태로 돌아가요. 되돌릴 수 없으니 필요하면 먼저 백업 파일을 내려받으세요.',
@@ -197,20 +248,29 @@ export function dataSection({ getState, updateState, navigate }) {
     class: 'btn btn-danger',
     text: '이 기기에서 데이터 삭제',
     onClick: async () => {
+      const synced = Boolean(sync?.config);
       const confirmed = await confirmDialog({
         title: '이 기기에서 데이터 삭제',
-        message: '이 브라우저에 저장된 이 앱의 데이터(자산·설정·시트 주소·시세 기록·복구용 사본)를 모두 지워요. 지운 뒤에는 되돌릴 수 없어요. 계속 쓸 거라면 먼저 백업 파일을 내려받으세요.',
+        message: synced
+          ? '이 브라우저에 저장된 이 앱의 데이터(자산·설정·시트 주소·시세 기록)와 기기 연동 설정·비밀번호를 모두 지워요. 구글 시트에 저장된 연동 데이터와 다른 기기는 그대로라, 나중에 이 기기에서 다시 연결하면 받아 올 수 있어요.'
+          : '이 브라우저에 저장된 이 앱의 데이터(자산·설정·시트 주소·시세 기록·복구용 사본)를 모두 지워요. 지운 뒤에는 되돌릴 수 없어요. 계속 쓸 거라면 먼저 백업 파일을 내려받으세요.',
         confirmText: '삭제하기',
         danger: true,
       });
       if (!confirmed) return;
-      showWipedScreen(clearAllData());
+      const removed = (sync ? sync.wipeDevice() : 0) + clearAllData();
+      showWipedScreen(removed);
     },
   });
 
   return el('section', { class: 'card settings-section data-section', 'aria-label': '내 데이터' },
     el('h2', { class: 'section-title', text: '내 데이터' }),
-    el('p', { class: 'section-desc', text: '입력한 정보는 이 기기의 브라우저에만 저장되고, 어디로도 전송되지 않아요. 같은 앱 주소를 다른 사람이 써도 데이터가 섞이지 않아요.' }),
+    el('p', {
+      class: 'section-desc',
+      text: sync?.config
+        ? '입력한 정보는 이 기기의 브라우저에 저장되고, 기기 연동으로 연동 비밀번호로 잠근 사본이 내 구글 시트에도 저장돼요. 그 밖의 곳으로는 전송되지 않아요.'
+        : '입력한 정보는 이 기기의 브라우저에만 저장되고, 어디로도 전송되지 않아요. 같은 앱 주소를 다른 사람이 써도 데이터가 섞이지 않아요.',
+    }),
     el('div', { class: 'data-block' },
       el('h3', { class: 'data-title', text: '백업과 복원' }),
       el('p', { text: '다른 기기나 브라우저로 옮길 때, 그리고 브라우저 기록을 지울 때를 대비해 백업 파일을 내려받아 두세요. 새 기기에서 이 화면의 "백업 파일로 복원"을 누르면 그대로 옮겨져요.' }),
@@ -222,10 +282,10 @@ export function dataSection({ getState, updateState, navigate }) {
       el('h3', { class: 'data-title', text: '둘러보기' }),
       el('div', { class: 'toolbar' },
         el('button', { type: 'button', class: 'btn', text: '사용 가이드 다시 보기', onClick: () => openGuide({ getState, updateState, navigate }) }),
-        el('button', { type: 'button', class: 'btn', text: '샘플 데이터 불러오기', onClick: () => loadSample({ getState, navigate }) }))),
+        el('button', { type: 'button', class: 'btn', text: '샘플 데이터 불러오기', onClick: () => loadSample({ getState, navigate, sync }) }))),
     el('div', { class: 'data-block danger-zone' },
       el('h3', { class: 'data-title', text: '데이터 지우기' }),
-      el('p', { text: '여러 사람이 쓰는 컴퓨터(회사·학교·PC방 등)에서는 다 쓴 뒤 "이 기기에서 데이터 삭제"를 눌러 주세요. 데이터가 이 브라우저에 남아 있어서, 다음 사람이 이 주소를 열면 볼 수 있어요.' }),
+      el('p', { text: '여러 사람이 쓰는 컴퓨터(회사·학교·PC방 등)에서는 다 쓴 뒤 "이 기기에서 데이터 삭제"를 눌러 주세요. 데이터가 이 브라우저에 남아 있어서, 다음 사람이 이 주소를 열면 볼 수 있어요. 기기 연동 중이면 시트와 다른 기기의 데이터는 그대로예요.' }),
       el('div', { class: 'toolbar' }, resetButton, wipeButton)));
 }
 

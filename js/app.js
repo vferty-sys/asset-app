@@ -1,13 +1,18 @@
 // 앱 진입점: 데이터 불러오기, 테마 적용, 탭 라우팅(#주소 기반).
 
 import { APP_NAME, STORAGE_KEYS } from './constants.js';
+import { STORAGE_PREFIX } from './constants.js';
 import { pickStorageBackend } from './storage.js';
-import { initState, reloadState, getState, updateState, subscribe, isPersistEnabled } from './state.js';
+import {
+  initState, reloadState, getState, updateState, replaceState, subscribe, switchBackend, isPersistEnabled,
+} from './state.js';
+import { createSyncEngine, dataStorageFor, readSyncConfig } from './sync.js';
 import { initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
 import { initInstall } from './install.js';
 import { el, clear, closeAllModals, showToast } from './dom.js';
 import { mountPriceStatus } from './ui/price-status.js';
-import { clearSample, openGuide } from './ui/data-tools.js';
+import { clearSample, downloadBackup, openGuide } from './ui/data-tools.js';
+import { mountSyncBanner, openUnlockModal } from './ui/sync-ui.js';
 import * as dashboard from './ui/dashboard.js';
 import * as holdings from './ui/holdings.js';
 import * as analysis from './ui/analysis.js';
@@ -31,6 +36,8 @@ const DEFAULT_VIEW = 'dashboard';
 
 // 앱을 다시 펼쳤을 때 마지막 시세가 이보다 오래됐으면 새로 받는다.
 const PRICE_STALE_MS = 15 * 60 * 1000;
+// 기기 연동: 화면을 보고 있는 동안 이 간격으로 다른 기기가 저장했는지 확인한다.
+const SYNC_CHECK_MS = 60 * 1000;
 
 const STARTUP_MESSAGES = {
   corrupt: '저장된 데이터를 읽지 못해 새로 시작했어요. 이전 데이터는 브라우저 안에 따로 보관해 두었어요.',
@@ -128,10 +135,14 @@ function watchPrices() {
   });
 }
 
-// 화면 위 안내: 시작할 때 생긴 저장소 문제, 샘플 데이터로 둘러보는 중
+// 화면 위 안내: 시작할 때 생긴 저장소 문제, 샘플 데이터로 둘러보는 중, 기기 연동(비밀번호 필요·부딪힘·오류)
 function mountBanners(startupMessage) {
   const holder = document.getElementById('app-banner');
   if (!holder) return;
+  const appSlot = el('div', { class: 'banner-stack' });
+  const syncSlot = el('div', { class: 'banner-stack' });
+  holder.replaceChildren(appSlot, syncSlot);
+  const updateHolder = () => { holder.hidden = appSlot.childElementCount + syncSlot.childElementCount === 0; };
   let sampleShown = null;
   const draw = () => {
     const sample = getState().meta.sample;
@@ -144,18 +155,46 @@ function mountBanners(startupMessage) {
         el('span', { text: '샘플 데이터로 둘러보는 중이에요. 마음껏 바꿔 봐도 돼요.' }),
         el('button', { type: 'button', class: 'btn btn-small', text: '샘플 지우고 내 데이터로 시작', onClick: () => clearSample(context) })));
     }
-    holder.replaceChildren(...items);
-    holder.hidden = items.length === 0;
+    appSlot.replaceChildren(...items);
+    updateHolder();
   };
   draw();
   subscribe(draw);
+  if (context.sync) mountSyncBanner(syncSlot, { sync: context.sync, downloadBackup: () => downloadBackup(context), onChange: updateHolder });
+}
+
+// 기기 연동: 앱을 열 때, 다시 볼 때, 인터넷이 다시 연결될 때, 그리고 1분마다 다른 기기와 맞춘다.
+function watchSync(sync) {
+  const check = () => {
+    if (document.visibilityState === 'visible') sync.sync();
+  };
+  document.addEventListener('visibilitychange', check);
+  window.addEventListener('focus', check);
+  window.addEventListener('online', check);
+  setInterval(check, SYNC_CHECK_MS);
+  if (sync.status.state === 'locked') openUnlockModal({ sync });
+  else check();
+}
+
+// 브라우저를 닫으면 지워지는 저장소 (기기 연동에서 비밀번호를 기억하지 않는 기기용). 쓸 수 없으면 null
+function pickSessionStorage() {
+  try {
+    const storage = globalThis.sessionStorage;
+    const probeKey = `${STORAGE_PREFIX}probe`;
+    storage.setItem(probeKey, '1');
+    storage.removeItem(probeKey);
+    return storage;
+  } catch {
+    return null;
+  }
 }
 
 // 처음 왔고 아직 아무것도 입력하지 않았으면 첫 사용 가이드를 띄운다.
+// 기기 연동을 켠 기기(비밀번호를 기억하지 않아 데이터가 비어 있을 수 있음)에서는 띄우지 않는다.
 function maybeShowGuide() {
   const state = getState();
   const empty = state.holdings.length + state.otherAssets.length + state.pensions.length === 0;
-  if (!state.meta.onboardingDone && empty && isPersistEnabled()) openGuide(context);
+  if (!state.meta.onboardingDone && empty && isPersistEnabled() && !context.sync?.config) openGuide(context);
 }
 
 // 오프라인에서도 열리게 앱 파일을 저장해 두는 서비스 워커 (https 또는 localhost에서만)
@@ -169,11 +208,17 @@ function registerServiceWorker() {
 }
 
 function start() {
-  const { backend, persistent } = pickStorageBackend();
+  const { backend: local, persistent } = pickStorageBackend();
+  const session = pickSessionStorage();
+  // 비밀번호를 기억하지 않는 연동 기기면 자산 데이터는 브라우저를 닫으면 지워지는 저장소에 둔다
+  const syncConfig = persistent ? readSyncConfig(local) : null;
   const result = initState({
-    backend,
+    backend: dataStorageFor(syncConfig, { local, session }),
     onSaveError: () => showToast('저장하지 못했어요. 브라우저 저장 공간을 확인해 주세요.', 'danger', 4000),
   });
+  context.sync = persistent
+    ? createSyncEngine({ getState, replaceState, subscribe, switchBackend, local, session })
+    : null;
   mountBanners(persistent
     ? STARTUP_MESSAGES[result.status]
     : '이 브라우저에서는 데이터를 저장할 수 없어요(사생활 보호 모드 등). 창을 닫으면 입력한 내용이 사라져요.');
@@ -182,7 +227,7 @@ function start() {
   subscribe((state) => applyAppearance(state.settings));
   darkQuery.addEventListener('change', syncThemeColorMeta);
 
-  initMarket(backend);
+  initMarket(local);
   mountPriceStatus(document.getElementById('price-status'), { getState, subscribe });
   watchPrices();
 
@@ -197,6 +242,7 @@ function start() {
   initInstall();
   route();
   maybeShowGuide();
+  if (context.sync) watchSync(context.sync);
   registerServiceWorker();
 }
 
