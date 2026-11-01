@@ -4,6 +4,7 @@ import { ACCOUNTS, ASSET_CLASSES } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, holdingWeights } from '../calc/diversification.js';
 import { growthShareOf } from '../calc/allocation-presets.js';
+import { cashInKRW } from '../cash.js';
 import { rebalance, targetKeys } from '../calc/rebalance.js';
 import { estimateCosts } from '../calc/tax.js';
 import { getMarket, subscribeMarket } from '../market.js';
@@ -28,7 +29,8 @@ const HELP = {
     '전체 리밸런싱: 많은 쪽은 팔고 모자란 쪽은 사서 목표에 맞춰요.',
     '매수만으로 맞추기: 팔지 않고, 추가 투자금으로 모자란 쪽부터 사요. 세금·수수료가 적게 들어요.',
   ],
-  byAccount: '연금저축·IRP처럼 돈을 다른 계좌로 옮기기 어려울 때 켜세요. 같은 목표 비중을 계좌마다 따로 맞추고, 계좌 안에서만 사고팔아요.',
+  byAccount: '연금저축·IRP처럼 돈을 다른 계좌로 옮기기 어려울 때 켜세요. 같은 목표 비중을 계좌마다 따로 맞추고, 계좌 안에서만 사고팔아요. 예수금도 그 계좌의 것만 써요.',
+  cash: '보유 종목 화면에 적은 계좌별 예수금이에요. 지금 비중에는 넣지 않고, 리밸런싱할 때 살 돈으로 함께 써요.',
   realized: '올해 이미 팔아서 생긴 해외주식 이익이에요(손실이면 앞에 -). 해외주식은 한 해 이익을 모두 합쳐 250만원을 빼고 세금을 매겨서, 이 값을 넣으면 세금을 더 정확히 추정해요.',
 };
 
@@ -114,7 +116,7 @@ function lineAccounts(line) {
 
 function groupCard(group, { method, money, band, showAnyway, onShowAnyway }) {
   const title = group.account ? `${group.account} 계좌` : '전체 보유 종목';
-  const summary = `지금 ${money(group.current)}${group.additional > 0 ? ` + 추가 투자금 ${money(group.additional)}` : ''}`;
+  const summary = `지금 ${money(group.current)}${group.additional > 0 ? ` + 살 돈(예수금·추가 투자금) ${money(group.additional)}` : ''}`;
   const card = el('section', { class: 'card result-card' },
     el('div', { class: 'result-head' }, el('h2', { class: 'section-title', text: title }), el('span', { class: 'muted small', text: summary })));
 
@@ -129,7 +131,7 @@ function groupCard(group, { method, money, band, showAnyway, onShowAnyway }) {
     return card;
   }
   if (method === 'buyOnly' && group.additional <= 0) {
-    card.append(el('p', { class: 'muted', text: '이 계좌에는 추가 투자금이 없어서 그대로 둬요.' }));
+    card.append(el('p', { class: 'muted', text: '이 계좌에는 예수금이나 추가 투자금이 없어서 그대로 둬요.' }));
     return card;
   }
   if (method === 'full' && group.withinBand && group.additional <= 0 && !showAnyway) {
@@ -207,12 +209,14 @@ export function render(root, { getState, updateState, subscribe }) {
   function draw() {
     clear(root);
     const state = getState();
-    lastKey = JSON.stringify([state.holdings, state.settings]);
+    lastKey = JSON.stringify([state.holdings, state.cash, state.settings]);
     const { settings } = state;
     const band = settings.rebalanceBand;
     const money = (value) => formatMoney(value, { unit: settings.displayUnit });
     const market = getMarket(state);
     const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
+    // 예수금: 지금 비중에는 넣지 않고 살 돈으로 쓴다
+    const cash = cashInKRW(state.cash, market.fx.rate);
 
     root.append(el('p', { class: 'page-lead' }, '목표 비중을 정하면 무엇을 몇 주 사고팔지 계산해 드려요. ', helpTip('리밸런싱', HELP.rebalance)));
 
@@ -389,7 +393,16 @@ export function render(root, { getState, updateState, subscribe }) {
     };
     function drawAdditional() {
       clear(additionalBox);
-      const label = options.method === 'buyOnly' ? '추가 투자금 (필수)' : '추가 투자금 (선택)';
+      if (cash.total > 0) {
+        const byAccount = Object.entries(cash.byAccount).map(([account, amount]) => `${account} ${money(amount)}`).join(' · ');
+        additionalBox.append(el('p', { class: 'cash-note' },
+          el('strong', { text: `예수금 ${money(cash.total)}` }),
+          `을 살 돈으로 함께 써요 (${byAccount}). `,
+          helpTip('예수금', HELP.cash)));
+        if (cash.missingUsd > 0) additionalBox.append(el('p', { class: 'muted small', text: `달러 예수금 $${formatNumber(cash.missingUsd, { maximumFractionDigits: 2 })}는 환율이 없어서 빼고 계산해요.` }));
+      }
+      const required = options.method === 'buyOnly' && cash.total <= 0;
+      const label = cash.total > 0 ? '추가로 넣을 돈 (선택)' : `추가 투자금 (${required ? '필수' : '선택'})`;
       if (options.byAccount) {
         additionalBox.append(el('p', { class: 'field-label', text: `${label} — 계좌별로 입력` }),
           el('div', { class: 'form-pair' }, accounts.map((account) => moneyField(account, options.additionalByAccount[account], (value) => {
@@ -433,13 +446,16 @@ export function render(root, { getState, updateState, subscribe }) {
       clear(results);
       results.classList.remove('is-stale');
       const current = getState();
+      // 살 돈 = 예수금 + 직접 적은 추가 투자금 (계좌별로 계산하면 계좌마다)
+      const additionalByAccount = { ...options.additionalByAccount };
+      for (const [account, amount] of Object.entries(cash.byAccount)) additionalByAccount[account] = (additionalByAccount[account] ?? 0) + amount;
       const result = rebalance({
         rows: portfolio.rows,
         fxRate: market.fx.rate,
         targets: current.targets,
         method: options.method,
-        additional: options.additional ?? 0,
-        additionalByAccount: options.additionalByAccount,
+        additional: (options.additional ?? 0) + cash.total,
+        additionalByAccount,
         byAccount: options.byAccount,
         allowFractionalUS: settings.allowFractionalUS,
         band,
@@ -448,7 +464,7 @@ export function render(root, { getState, updateState, subscribe }) {
         const messages = {
           'target-sum': '목표 비중 합계가 100%가 되어야 계산할 수 있어요.',
           'no-holdings': '현재가나 환율이 있는 종목이 없어서 계산할 수 없어요.',
-          'no-additional': '매수만으로 맞추려면 추가 투자금을 입력해 주세요.',
+          'no-additional': '매수만으로 맞추려면 예수금이나 추가 투자금이 있어야 해요. 보유 종목 화면에서 예수금을 적거나 추가 투자금을 입력해 주세요.',
         };
         results.append(el('p', { class: 'banner banner-warn', role: 'alert', text: messages[result.error] }));
         return;

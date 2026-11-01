@@ -6,6 +6,7 @@ import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, concentrationAlerts, holdingWeights } from '../calc/diversification.js';
 import { scorePortfolio } from '../calc/score.js';
 import { assetSummary, valueByAccount } from '../calc/totals.js';
+import { cashInKRW } from '../cash.js';
 import { pensionSummary, planPensions } from '../calc/projection.js';
 import { loadChartLibrary, renderTrendChart } from '../charts.js';
 import { ageAt, currentMonthIndex, formatMonthIndex, isOlderThan, toYearMonth } from '../dates.js';
@@ -19,7 +20,7 @@ import { scoreGauge } from './score-view.js';
 
 const HELP = {
   total: [
-    '투자자산(보유 종목 평가금액)과 기타 금융자산(공제회·예적금, 계좌에 연결하지 않은 연금 적립금)을 더한 금액이에요.',
+    '투자자산(보유 종목 평가금액 + 예수금)과 기타 금융자산(공제회·예적금, 계좌에 연결하지 않은 연금 적립금)을 더한 금액이에요.',
     '계좌에 연결한 연금은 보유 종목으로 이미 들어가 있어서 다시 더하지 않아요. 앞으로 받을 연금은 "예상 월 연금액"에 따로 보여드려요.',
   ],
   pnl: '보유 종목의 평가금액에서 매입금액(평단가 × 수량)을 뺀 금액이에요. 공제회·예적금·연금은 넣지 않아요.',
@@ -68,7 +69,8 @@ function heroCard(summary, money) {
       el('span', { class: 'swatch', style: `background: var(--${part.color})`, 'aria-hidden': 'true' }),
       el('span', { class: 'split-name', text: part.name }),
       el('span', { class: 'split-value', text: money(part.value) }),
-      summary.total > 0 ? el('span', { class: 'muted', text: formatPercentShort(share(part.value)) }) : null))));
+      summary.total > 0 ? el('span', { class: 'muted', text: formatPercentShort(share(part.value)) }) : null))),
+    summary.cash > 0 ? el('p', { class: 'muted small', text: `투자자산에는 예수금 ${money(summary.cash)}이 들어 있어요.` }) : null);
 }
 
 function pnlTile(state, portfolio, money) {
@@ -209,8 +211,9 @@ export function render(root, { getState, updateState, subscribe }) {
     const state = getState();
     const market = getMarket(state);
     const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
-    const summary = assetSummary({ rows: portfolio.rows, otherAssets: state.otherAssets, pensions: state.pensions });
-    return { state, portfolio, summary };
+    const cash = cashInKRW(state.cash, market.fx.rate);
+    const summary = assetSummary({ rows: portfolio.rows, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount });
+    return { state, portfolio, summary, cash };
   }
 
   // 이번 달 기록 남기기. 같은 달 기록이 있거나 계산에 문제가 있으면 먼저 물어본다.
@@ -353,7 +356,7 @@ export function render(root, { getState, updateState, subscribe }) {
     }
 
     // ── 총자산과 요약 숫자 ──
-    const plans = planPensions(state.pensions, { settings: s, accountValues: valueByAccount(portfolio.rows), nowMonth });
+    const plans = planPensions(state.pensions, { settings: s, accountValues: valueByAccount(portfolio.rows, cashInKRW(state.cash, getMarket(state).fx.rate).byAccount), nowMonth });
     root.append(
       heroCard(summary, money),
       el('div', { class: 'kpi-grid' },

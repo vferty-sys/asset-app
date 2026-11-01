@@ -2,6 +2,7 @@
 // 날짜는 불러오는 날을 기준으로 정한다 (적립금 기준일 = 이번 달 1일, 월별 기록 = 지난 6개월).
 
 import { assetSummary } from './calc/totals.js';
+import { cashInKRW } from './cash.js';
 import { valuePortfolio } from './calc/valuation.js';
 import { currentMonthIndex, toYearMonth, todayString } from './dates.js';
 import { createDefaultData, normalizeData } from './storage.js';
@@ -62,6 +63,8 @@ export function createSampleData(now = new Date()) {
     ...base,
     settings: { ...base.settings, ...SETTINGS },
     holdings: HOLDINGS,
+    // 계좌에 남아 있는 현금 (리밸런싱 때 살 돈으로 쓴다)
+    cash: { 일반: { KRW: 850_000, USD: 120 }, 연금저축: { KRW: 140_000 } },
     otherAssets: [
       {
         id: 'o1', name: '행정공제회', type: '공제회', balance: 40_000_000, accruedInterest: 8_000_000, baseDate: `${month(0)}-01`,
@@ -96,7 +99,7 @@ export function createSampleData(now = new Date()) {
   };
 
   const { rows } = valuePortfolio(draft.holdings, { prices: {}, fxRate: SETTINGS.manualFxUsdKrw });
-  const summary = assetSummary({ rows, otherAssets: draft.otherAssets, pensions: draft.pensions });
+  const summary = assetSummary({ rows, otherAssets: draft.otherAssets, pensions: draft.pensions, cashByAccount: cashInKRW(draft.cash, SETTINGS.manualFxUsdKrw).byAccount });
   draft.snapshots = INVESTED_STEPS.map((step, index) => ({
     month: month(index - INVESTED_STEPS.length),
     date: `${month(index - INVESTED_STEPS.length)}-28`,

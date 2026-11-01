@@ -9,6 +9,7 @@ import { normalizeHolding } from './holding.js';
 import { normalizeOtherAsset } from './other-asset.js';
 import { normalizePension } from './pension.js';
 import { normalizeSnapshots } from './snapshot.js';
+import { normalizeCash } from './cash.js';
 
 // 데이터 구조를 바꿀 때마다 1씩 올리고 MIGRATIONS에 변환 함수를 추가한다.
 export const SCHEMA_VERSION = 1;
@@ -21,7 +22,7 @@ export const MIGRATIONS = Object.freeze({
 });
 
 const BACKUP_APP_ID = 'asset-app';
-const KNOWN_TOP_KEYS = ['schemaVersion', 'holdings', 'otherAssets', 'pensions', 'targets', 'settings', 'snapshots'];
+const KNOWN_TOP_KEYS = ['schemaVersion', 'holdings', 'cash', 'otherAssets', 'pensions', 'targets', 'settings', 'snapshots'];
 
 export class DataError extends Error {
   constructor(code, message) {
@@ -35,6 +36,7 @@ export function createDefaultData(now = new Date()) {
   return {
     schemaVersion: SCHEMA_VERSION,
     holdings: [],
+    cash: {},
     otherAssets: [],
     pensions: [],
     targets: { mode: 'assetClass', assetClass: {}, ticker: {} },
@@ -94,6 +96,8 @@ export function normalizeData(raw) {
   return {
     schemaVersion: SCHEMA_VERSION,
     holdings: objectList(source.holdings).map((holding) => normalizeHolding(holding)),
+    // 계좌별 예수금 (원화·달러)
+    cash: normalizeCash(source.cash),
     otherAssets: objectList(source.otherAssets).map((asset) => normalizeOtherAsset(asset)),
     // 세율이 없던 예전 연금은 설정의 연금 세율 기본값으로 채운다
     pensions: objectList(source.pensions).map((pension) => normalizePension(pension, { defaultTaxRate: settings.pensionTaxRate })),

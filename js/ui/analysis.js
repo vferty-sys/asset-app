@@ -8,6 +8,7 @@ import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, concentrationAlerts, holdingWeights } from '../calc/diversification.js';
 import { scorePortfolio } from '../calc/score.js';
 import { otherFinancialAssets } from '../calc/totals.js';
+import { cashInKRW } from '../cash.js';
 import { buildChartData, loadChartLibrary, renderDoughnut } from '../charts.js';
 import { COUNTRY_WEIGHTS, GLOBAL_COUNTRY, holdingCountryMix, presetMix, weightTableIssues } from '../country-weights.js';
 import { getMarket, subscribeMarket } from '../market.js';
@@ -102,7 +103,8 @@ function countryFixCard(fixes, updateState) {
 function chartCard(config, view, { settings, includeOthers, money }) {
   const { rows, slices } = buildChartData(view[config.key], { order: config.order });
   const limit = config.limitKey ? settings[config.limitKey] / 100 : null;
-  const scope = config.stocksOnly || !includeOthers ? `주식 ${money(view.stockTotal)}` : `전체 ${money(view.total)}`;
+  let scope = config.stocksOnly || !includeOthers ? `주식 ${money(view.stockTotal)}` : `전체 ${money(view.total)}`;
+  if (!config.stocksOnly && !includeOthers && view.cashTotal > 0) scope = `주식 + 예수금 ${money(view.stockTotal + view.cashTotal)}`;
   const canvas = el('canvas', { width: '200', height: '200' });
   const chartBox = el('div', { class: 'chart-box' }, canvas);
 
@@ -154,7 +156,9 @@ export function render(root, { getState, updateState, subscribe }) {
     const money = (value) => formatMoney(value, { unit: state.settings.displayUnit });
     const market = getMarket(state);
     const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
-    const stocks = analyzeDiversification(portfolio.rows);
+    // 예수금은 자산군(현금성)·계좌 차트에만 더한다 (국가·섹터·쏠림·점수에는 넣지 않음)
+    const cash = cashInKRW(state.cash, market.fx.rate);
+    const stocks = analyzeDiversification(portfolio.rows, { cashByAccount: cash.byAccount });
 
     if (stocks.stockTotal <= 0) {
       const noValue = state.holdings.length > 0;
@@ -168,7 +172,7 @@ export function render(root, { getState, updateState, subscribe }) {
     const score = scorePortfolio(portfolio.rows, state.settings);
     const alerts = concentrationAlerts({ ...stocks, holdings: holdingWeights(portfolio.rows) }, state.settings);
     const view = includeOthers
-      ? analyzeDiversification(portfolio.rows, { includeOthers: true, otherAssets: state.otherAssets, pensions: state.pensions })
+      ? analyzeDiversification(portfolio.rows, { includeOthers: true, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount })
       : stocks;
 
     // 국가를 고칠 ETF는 종목 목록을 받아 온 뒤에 찾아서 쏠림 경고 바로 아래에 보여준다
@@ -198,6 +202,7 @@ export function render(root, { getState, updateState, subscribe }) {
     });
     toggle.element.setAttribute('aria-label', '차트에 넣을 자산');
     const notes = [];
+    if (cash.total > 0) notes.push(`예수금 ${money(cash.total)}은 자산군(현금성)·계좌 차트에 더했어요. 국가·섹터와 쏠림 경고에는 넣지 않아요.`);
     if (includeOthers) {
       notes.push('국가·섹터는 주식만 집계해요. 공제회·예적금·연금은 나라·업종을 나누기 어려워 자산군·계좌 차트에만 더했어요.');
       if (otherFinancialAssets(state).total <= 0) notes.push('아직 입력한 공제회·예적금·연금이 없어요. 기타 자산 탭에서 입력하면 함께 볼 수 있어요.');

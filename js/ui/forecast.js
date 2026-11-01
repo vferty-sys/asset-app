@@ -4,6 +4,7 @@
 import { PENSION_KIND_LABELS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { valueByAccount } from '../calc/totals.js';
+import { cashInKRW } from '../cash.js';
 import {
   coverageYears, incomeGap, incomeTimeline, planPensions, projectOtherAsset, retirementProjection, toFutureValue,
   toPresentValue, valueAt, yearlySamples,
@@ -109,9 +110,12 @@ export function render(root, { getState, subscribe }) {
     // 계좌에 연결한 적립형 연금의 종목은 연금으로 계산하므로 주식에서 뺀다 (이중 계산 방지)
     const market = getMarket(state);
     const { rows } = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
-    const accountValues = valueByAccount(rows);
+    // 예수금은 곧 투자할 돈이라 그 계좌의 주식 금액과 함께 굴린다 (연금에 연결한 계좌는 연금 적립금으로)
+    const cash = cashInKRW(state.cash, market.fx.rate);
+    const accountValues = valueByAccount(rows, cash.byAccount);
     const linkedAccounts = [...new Set(state.pensions.filter((p) => p.kind === 'accumulating' && p.linkedAccount).map((p) => p.linkedAccount))];
-    const stockValue = rows.filter((row) => row.valueKRW > 0 && !linkedAccounts.includes(row.holding.account)).reduce((sum, row) => sum + row.valueKRW, 0);
+    const unlinkedCash = Object.entries(cash.byAccount).filter(([account]) => !linkedAccounts.includes(account)).reduce((sum, [, amount]) => sum + amount, 0);
+    const stockValue = rows.filter((row) => row.valueKRW > 0 && !linkedAccounts.includes(row.holding.account)).reduce((sum, row) => sum + row.valueKRW, 0) + unlinkedCash;
     const linkedValue = linkedAccounts.reduce((sum, account) => sum + (accountValues[account] ?? 0), 0);
 
     const plans = planPensions(state.pensions, { settings: s, accountValues, nowMonth });
@@ -133,7 +137,7 @@ export function render(root, { getState, subscribe }) {
       const byType = Object.entries(projection.deposits.byType).map(([type, amount]) => `${type} ${money(at(amount))}`).join(' · ');
       const until = retirementMonth > nowMonth ? `앞으로 ${durationText(retirementMonth - nowMonth)}` : '이미 지난 시점이에요';
       const notes = [
-        `주식: 지금 ${money(stockValue)}에 매달 ${money(s.stockMonthlyInvestment)}씩 더해 연 ${pct(s.stockReturnLow)} / ${pct(s.stockReturnBase)} / ${pct(s.stockReturnHigh)}로 굴린다고 계산했어요.`,
+        `주식: 지금 ${money(stockValue)}${unlinkedCash > 0 ? `(예수금 ${money(unlinkedCash)} 포함)` : ''}에 매달 ${money(s.stockMonthlyInvestment)}씩 더해 연 ${pct(s.stockReturnLow)} / ${pct(s.stockReturnBase)} / ${pct(s.stockReturnHigh)}로 굴린다고 계산했어요.`,
         linkedValue > 0 ? `${linkedAccounts.join('·')} 계좌의 종목 ${money(linkedValue)}은 연금으로 계산해서 주식에서 뺐어요.` : null,
         `공제회·예적금은 항목마다 입력한 기준 이율로 계산했고, 퇴직 전에 받는 돈은 그대로 들고 있다고 봤어요.${state.otherAssets.some((asset) => asset.applyTax) ? ' 세금 빼기를 켠 항목은 이자에서 세금을 뺐어요.' : ''}`,
         view === 'present' ? `현재가치는 물가상승률 연 ${pct(s.inflationRate)}로 지금 돈 가치로 바꾼 금액이에요.` : null,
