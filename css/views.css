@@ -1750,3 +1750,98 @@
   margin: 0;
   padding-left: 18px;
 }
+
+/* ── 리밸런싱: 추천 비율에서 고르기 ───────────────── */
+.alloc-list {
+  display: grid;
+  gap: 10px;
+}
+
+.alloc-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 10px;
+  row-gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.alloc-card > :not(.alloc-radio) {
+  grid-column: 2;
+}
+
+.alloc-radio {
+  grid-row: 1 / span 5;
+  margin-top: 3px;
+  accent-color: var(--primary);
+}
+
+.alloc-card:has(.alloc-radio:checked) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+}
+
+.alloc-card.is-disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.alloc-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.alloc-bar {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--surface-2);
+}
+
+.alloc-mix {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.alloc-summary {
+  font-size: 0.9375rem;
+}
+
+.alloc-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.alloc-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 4px;
+  border-radius: 2px;
+}
+
+.alloc-stocks { background: var(--series-1); }
+.alloc-bonds { background: var(--series-3); }
+.alloc-cash { background: var(--series-4); }
+.alloc-other { background: var(--series-2); }
+
+.alloc-preview {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.alloc-preview p {
+  margin: 0;
+}

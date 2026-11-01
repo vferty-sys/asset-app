@@ -3,13 +3,15 @@
 import { ACCOUNTS, ASSET_CLASSES } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, holdingWeights } from '../calc/diversification.js';
+import { growthShareOf } from '../calc/allocation-presets.js';
 import { rebalance, targetKeys } from '../calc/rebalance.js';
 import { estimateCosts } from '../calc/tax.js';
 import { getMarket, subscribeMarket } from '../market.js';
-import { el, clear, helpTip, uid } from '../dom.js';
+import { el, clear, helpTip, showToast, uid } from '../dom.js';
 import { formatMoney, formatNumber, formatPercent, formatPrice } from '../format.js';
 import { parseNumberInput } from '../validate.js';
 import { createField, numberInput, segmented, textInput } from './form.js';
+import { openAllocationPicker } from './allocation-picker.js';
 
 const MODE_OPTIONS = [['assetClass', '자산군 단위'], ['ticker', '종목 단위']];
 const METHOD_OPTIONS = [['full', '전체 리밸런싱'], ['buyOnly', '매수만으로 맞추기']];
@@ -39,6 +41,15 @@ const options = {
   realizedOverseasGain: null,
   calculated: false,
   showAnyway: false,
+};
+
+// 목표는 있는데 보유 종목에 없는 자산군을 채우려면 어떤 종목이 필요한지 (예시일 뿐 추천이 아님)
+const CLASS_EXAMPLES = {
+  성장주: '주식이나 주식 ETF',
+  배당주: '배당주나 배당 ETF',
+  채권: '국고채·미국채 같은 채권 ETF',
+  현금성: 'CD금리·머니마켓·단기채 ETF',
+  기타: '금·원자재·리츠 ETF',
 };
 
 const pct = (ratio) => formatPercent(ratio);
@@ -233,7 +244,16 @@ export function render(root, { getState, updateState, subscribe }) {
     };
 
     const draftSum = () => items.reduce((total, [key]) => total + (draft[key] > 0 ? draft[key] : 0), 0);
+    // 목표는 있는데 살 종목이 없는 자산군 안내
+    const missingNote = el('p', { class: 'banner banner-info missing-classes', hidden: true });
+    const refreshMissing = () => {
+      if (mode !== 'assetClass') return;
+      const missing = items.filter(([key]) => draft[key] > 0 && !state.holdings.some((holding) => holding.assetClass === key));
+      missingNote.hidden = missing.length === 0;
+      missingNote.textContent = missing.length === 0 ? '' : `${missing.map(([key]) => `${key} ${formatNumber(draft[key], { maximumFractionDigits: 1 })}%`).join(', ')}를 채우려면 보유 종목에 그 자산군 종목이 있어야 해요 (${missing.map(([key]) => `${key}: ${CLASS_EXAMPLES[key]}`).join(' / ')}). 수량 0으로 추가해도 몇 주 살지 계산해 드려요.`;
+    };
     const refreshDraft = () => {
+      refreshMissing();
       const total = Math.round(draftSum() * 100) / 100;
       const complete = Math.abs(total - 100) < 0.01;
       sumNode.classList.toggle('is-warn', !complete);
@@ -300,13 +320,32 @@ export function render(root, { getState, updateState, subscribe }) {
       draw();
     });
 
+    // 이름난 투자자들의 배분 비율에서 골라 채우기 (자산군 단위에서만)
+    const presetButton = mode === 'assetClass'
+      ? el('button', { type: 'button', class: 'btn btn-small btn-primary', text: '추천 비율에서 고르기' })
+      : null;
+    presetButton?.addEventListener('click', () => {
+      openAllocationPicker({
+        state,
+        growthShare: growthShareOf(analyzeDiversification(portfolio.rows).assetClass),
+        onApply: (targets, preset) => {
+          saveTargets(targets);
+          options.calculated = false;
+          draw();
+          showToast(`${preset.name} 비율로 목표를 채웠어요`);
+        },
+      });
+    });
+
     root.append(el('section', { class: 'card targets-card' },
       el('h2', { class: 'section-title', text: '목표 비중' }),
       modeControl.element,
       el('p', { class: 'section-desc', text: mode === 'assetClass'
-        ? '자산군마다 목표를 정해요. 자산군 안의 종목들은 지금 비율대로 나눠요.'
-        : '종목마다 목표를 정해요. 목표를 비워 두거나 0%로 두면 그 종목은 모두 팔아요. 새로 살 종목은 보유 종목에 수량 0으로 추가하세요.' }),
+        ? '자산군마다 목표를 정해요. 자산군 안의 종목들은 지금 비율대로 나눠요. 어떻게 정할지 모르겠으면 "추천 비율에서 고르기"로 시작해 보세요.'
+        : '종목마다 목표를 정해요. 목표를 비워 두거나 0%로 두면 그 종목은 모두 팔아요. 새로 살 종목은 보유 종목에 수량 0으로 추가하세요. 추천 비율은 "자산군 단위"에서 고를 수 있어요.' }),
+      presetButton ? el('div', { class: 'toolbar' }, presetButton) : null,
       targetRows,
+      missingNote,
       el('div', { class: 'mix-foot' }, fillButton, sumNode)));
 
     root.append(el('section', { class: 'card' },
