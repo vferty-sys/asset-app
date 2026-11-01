@@ -1845,3 +1845,43 @@
 .alloc-preview p {
   margin: 0;
 }
+
+/* ── 예수금 ───────────────────────── */
+.cash-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.cash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.cash-total {
+  font-weight: 700;
+}
+
+.cash-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cash-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cash-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}

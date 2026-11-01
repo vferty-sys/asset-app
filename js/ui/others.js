@@ -3,6 +3,7 @@
 import { PENSION_KIND_LABELS, STALE_AFTER_DAYS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { valueByAccount } from '../calc/totals.js';
+import { cashInKRW } from '../cash.js';
 import { formatMonthIndex, isOlderThan, monthIndexAtAge } from '../dates.js';
 import { getMarket, subscribeMarket } from '../market.js';
 import { el, clear, svg } from '../dom.js';
@@ -34,7 +35,8 @@ function arrowIcon(up) {
 // 보유 종목의 계좌별 원화 평가금액 (적립형 연금 계좌 연결용)
 export function accountValuesOf(state) {
   const market = getMarket(state);
-  return valueByAccount(valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate }).rows);
+  // 연금 계좌 연결: 그 계좌의 보유 종목 평가금액 + 예수금
+  return valueByAccount(valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate }).rows, cashInKRW(state.cash, market.fx.rate).byAccount);
 }
 
 export function render(root, { getState, updateState, subscribe }) {
@@ -100,7 +102,7 @@ export function render(root, { getState, updateState, subscribe }) {
           const linked = accountValues[pension.linkedAccount] ?? 0;
           value = money(linked);
           detail = linked > 0
-            ? `${pension.linkedAccount} 계좌 보유 종목 금액을 써요 · ${rateText(pension.expectedReturns)}`
+            ? `${pension.linkedAccount} 계좌 보유 종목·예수금 금액을 써요 · ${rateText(pension.expectedReturns)}`
             : `${pension.linkedAccount} 계좌에 보유 종목이 없어요 — 보유 종목에서 추가해 주세요`;
         } else {
           value = money(pension.balance);

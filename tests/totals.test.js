@@ -43,11 +43,23 @@ test('지금 자산 요약: 투자자산 + 기타 금융자산 = 총자산, 자�
   });
   assert.deepEqual(summary, {
     invested: 9_000_000,
+    cash: 0,
     others: 4_500_000,
     total: 13_500_000,
     deposits: 3_000_000,
     pensionBalance: 1_500_000,
     byAssetClass: { 성장주: 7_000_000, 채권: 2_000_000, '예적금·공제회': 3_000_000, '연금 적립금': 1_500_000 },
   });
-  assert.deepEqual(assetSummary(), { invested: 0, others: 0, total: 0, deposits: 0, pensionBalance: 0, byAssetClass: {} });
+  assert.deepEqual(assetSummary(), { invested: 0, cash: 0, others: 0, total: 0, deposits: 0, pensionBalance: 0, byAssetClass: {} });
+});
+
+test('예수금: 투자자산과 현금성, 계좌별 금액(연금 계좌 연결용)에 더한다', () => {
+  const rows = [row('일반', '성장주', 6_000_000), row('IRP', '채권', 2_000_000)];
+  const summary = assetSummary({ rows, cashByAccount: { 일반: 500_000, IRP: 300_000 } });
+  assert.equal(summary.invested, 8_800_000);
+  assert.equal(summary.cash, 800_000);
+  assert.equal(summary.total, 8_800_000);
+  assert.deepEqual(summary.byAssetClass, { 성장주: 6_000_000, 채권: 2_000_000, 현금성: 800_000 });
+  assert.deepEqual(valueByAccount(rows, { IRP: 300_000, 연금저축: 100_000 }), { 일반: 6_000_000, IRP: 2_300_000, 연금저축: 100_000 });
+  assert.deepEqual(valueByAccount(rows), { 일반: 6_000_000, IRP: 2_000_000 });
 });

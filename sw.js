@@ -5,7 +5,7 @@
 //  - 구글 시트 시세 요청 등 다른 주소: 서비스 워커가 관여하지 않는다 (저장하지도 않음).
 // 파일을 추가·삭제·이름 변경했으면 APP_FILES를 고치고 CACHE_VERSION을 올려 주세요. (tests/sw.test.js가 목록을 검사한다)
 
-const CACHE_VERSION = 'v5';
+const CACHE_VERSION = 'v6';
 const CACHE_PREFIX = 'asset-app-';
 const CACHE_NAME = `${CACHE_PREFIX}${CACHE_VERSION}`;
 const CHART_URL = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js';
@@ -28,6 +28,7 @@ const APP_FILES = [
   './js/calc/tax.js',
   './js/calc/totals.js',
   './js/calc/valuation.js',
+  './js/cash.js',
   './js/charts.js',
   './js/classify.js',
   './js/constants.js',
@@ -51,6 +52,7 @@ const APP_FILES = [
   './js/sync.js',
   './js/ui/allocation-picker.js',
   './js/ui/analysis.js',
+  './js/ui/cash-form.js',
   './js/ui/dashboard.js',
   './js/ui/data-tools.js',
   './js/ui/forecast.js',

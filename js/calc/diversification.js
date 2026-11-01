@@ -38,24 +38,32 @@ export function toBreakdown(entries) {
 
 // rows: valuePortfolio(...).rows. 원화로 계산할 수 없는 종목(환율 없음)은 빠진다.
 // includeOthers: 자산군·계좌 집계에 공제회·예적금과 계좌에 연결하지 않은 적립형 연금을 더한다.
+// cashByAccount: 계좌별 예수금(원화) — 자산군(현금성)·계좌 집계에만 더한다.
 // 국가·섹터는 항상 주식만 집계한다.
-export function analyzeDiversification(rows, { includeOthers = false, otherAssets = [], pensions = [] } = {}) {
+export function analyzeDiversification(rows, {
+  includeOthers = false, otherAssets = [], pensions = [], cashByAccount = {},
+} = {}) {
   const valued = (rows ?? []).filter((row) => row.valueKRW > 0);
   const stockTotal = valued.reduce((sum, row) => sum + row.valueKRW, 0);
+  const cash = Object.entries(cashByAccount).filter(([, amount]) => amount > 0);
+  const cashTotal = cash.reduce((sum, [, amount]) => sum + amount, 0);
   const others = includeOthers ? otherFinancialAssets({ otherAssets, pensions }) : { deposits: 0, pensionBalance: 0, total: 0 };
   return {
     stockTotal,
+    cashTotal,
     othersTotal: others.total,
-    total: stockTotal + others.total,
+    total: stockTotal + cashTotal + others.total,
     country: toBreakdown(valued.flatMap((row) => splitByMix(row.valueKRW, holdingCountryMix(row.holding)))),
     sector: toBreakdown(valued.flatMap((row) => splitByMix(row.valueKRW, row.holding.sectorMix))),
     assetClass: toBreakdown([
       ...valued.map((row) => [row.holding.assetClass, row.valueKRW]),
+      ['현금성', cashTotal],
       [DEPOSIT_ASSET_CLASS, others.deposits],
       [PENSION_ASSET_CLASS, others.pensionBalance],
     ]),
     account: toBreakdown([
       ...valued.map((row) => [row.holding.account, row.valueKRW]),
+      ...cash,
       [OTHER_ACCOUNT, others.total],
     ]),
   };

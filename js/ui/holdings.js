@@ -10,6 +10,7 @@ import { el, clear, helpTip } from '../dom.js';
 import { formatMoney, formatNumber, formatPercent, formatPrice, formatQuoteTime, pnlClass, EMPTY } from '../format.js';
 import { openHoldingForm } from './holding-form.js';
 import { openCsvImport } from './holdings-csv.js';
+import { cashCard } from './cash-form.js';
 
 const HELP = {
   pnl: [
@@ -77,16 +78,17 @@ export function render(root, { getState, updateState, subscribe }) {
   function draw() {
     clear(root);
     const state = getState();
+    const money = (value, options) => formatMoney(value, { unit: state.settings.displayUnit, ...options });
+    const market = getMarket(state);
+    const cash = () => cashCard({ state, money, fxRate: market.fx.rate, getState, updateState });
     if (state.holdings.length === 0) {
       root.append(el('section', { class: 'card empty-state' },
         el('p', { class: 'empty-title', text: '아직 등록한 종목이 없어요' }),
         el('p', { class: 'muted', text: '가지고 있는 주식·ETF를 하나씩 추가하거나, 엑셀·구글 시트의 표를 붙여넣어 한 번에 등록하세요.' }),
-        toolbar()));
+        toolbar()), cash());
       return;
     }
 
-    const money = (value, options) => formatMoney(value, { unit: state.settings.displayUnit, ...options });
-    const market = getMarket(state);
     const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
     const issues = findPriceIssues(state.holdings, market);
     const rows = [...portfolio.rows].sort(byValueDesc);
@@ -190,7 +192,7 @@ export function render(root, { getState, updateState, subscribe }) {
     root.append(el('section', { class: 'holdings-section', 'aria-label': '종목 목록' },
       toolbar(),
       el('div', { class: 'card table-card holdings-table-wrap' }, el('div', { class: 'table-wrap' }, table)),
-      cards));
+      cards), cash());
   }
 
   draw();
