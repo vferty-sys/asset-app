@@ -165,6 +165,11 @@ const fixed = (overrides) => ({
   expectedMonthlyAmount: 2_000_000, amountBasis: 'present', inflationIndexed: true, ...overrides,
 });
 
+test('확정 수령형: 만원 단위로 잘못 저장한 금액(150)은 계산은 하되 경고한다', () => {
+  assert.match(planPension(fixed({ expectedMonthlyAmount: 150 }), PERSON).warnings.join(' '), /150원으로 적혀 있어요/);
+  assert.equal(planPension(fixed(), PERSON).warnings.some((warning) => warning.includes('원 단위')), false);
+});
+
 test('확정 수령형(현재가치 기준 금액): 받기 시작할 때 실제 금액으로 키우고, 세금을 뺀다', () => {
   const plan = planPension(fixed(), PERSON);
   assert.equal(toYearMonth(plan.startMonth), '2035-01');

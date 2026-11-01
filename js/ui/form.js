@@ -1,16 +1,21 @@
-// 입력 칸 공통 모양: 라벨(+도움말) → 입력 → 힌트 → 오류 문구
+// 입력 칸 공통 모양: 라벨(+도움말) → 입력 → (원 금액이면 한글 단위 확인) → 힌트 → 오류 문구
 
 import { el, uid, helpTip } from '../dom.js';
-import { formatNumber } from '../format.js';
+import { formatNumber, formatWonExact } from '../format.js';
 import { parseNumberInput } from '../validate.js';
 
 // control이 라디오 묶음처럼 여러 입력으로 된 경우 group: true (라벨을 aria-labelledby로 연결)
-export function createField({ label, help, hint, control, suffix, group = false, compact = false, className = '' }) {
+// preview: 단위가 '원'인 금액 칸 아래에 '= 150만원'처럼 한글 단위로 읽어 준다 (만원 단위로 잘못 적는 실수 방지).
+//          기본은 단위가 '원'이면 켠다. 주당 가격처럼 필요 없는 칸은 false
+export function createField({
+  label, help, hint, control, suffix, group = false, compact = false, className = '', preview = suffix === '원',
+}) {
   const id = control.id || uid('field');
   control.id = id;
   const hintNode = el('p', { class: 'field-hint', id: `${id}-hint`, hidden: !hint, text: hint ?? '' });
   const errorNode = el('p', { class: 'field-error', id: `${id}-error`, role: 'alert', hidden: true });
-  control.setAttribute('aria-describedby', `${hintNode.id} ${errorNode.id}`);
+  const previewNode = preview ? el('p', { class: 'field-preview num', id: `${id}-preview`, hidden: true }) : null;
+  control.setAttribute('aria-describedby', [previewNode?.id, hintNode.id, errorNode.id].filter(Boolean).join(' '));
 
   const labelNode = group
     ? el('span', { class: 'field-label', id: `${id}-label`, text: label })
@@ -22,8 +27,23 @@ export function createField({ label, help, hint, control, suffix, group = false,
   const element = el('div', { class: classes },
     el('div', { class: 'field-label-row' }, labelNode, help ? helpTip(label, help) : null),
     suffixNode ? el('div', { class: 'input-affix' }, control, suffixNode) : control,
+    previewNode,
     hintNode,
     errorNode);
+
+  // 원 금액을 한글 단위로 (단위가 달러로 바뀌면 숨긴다)
+  const updatePreview = () => {
+    if (!previewNode) return;
+    const amount = parseNumberInput(control.value);
+    const show = suffixNode?.textContent === '원' && Number.isFinite(amount) && amount > 0;
+    previewNode.hidden = !show;
+    previewNode.textContent = show ? `= ${formatWonExact(amount)}` : '';
+  };
+  if (previewNode) {
+    control.addEventListener('input', updatePreview);
+    control.addEventListener('change', updatePreview);
+    updatePreview();
+  }
 
   return {
     element,
@@ -40,6 +60,7 @@ export function createField({ label, help, hint, control, suffix, group = false,
     },
     setSuffix(text) {
       if (suffixNode) suffixNode.textContent = text;
+      updatePreview();
     },
   };
 }

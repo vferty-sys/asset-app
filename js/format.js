@@ -38,6 +38,22 @@ export function formatMoney(value, { unit = 'auto', signed = false } = {}) {
     : `${sign}${formatNumber(eok)}억 ${formatNumber(restMan)}만원`;
 }
 
+// 원 금액을 한글 단위로 빠짐없이 읽는다 (입력 칸 아래에서 자릿수 확인용, 반올림하지 않음).
+// 예) 150 → '150원', 1,500,000 → '150만원', 1,234,567 → '123만 4,567원', 1,234,500,000 → '12억 3,450만원'
+export function formatWonExact(value) {
+  if (!isNumber(value)) return EMPTY;
+  const sign = value < 0 ? '-' : '';
+  const abs = Math.abs(value);
+  if (abs < MAN) return `${sign}${formatNumber(abs, { maximumFractionDigits: 2 })}원`;
+  const won = Math.round(abs);
+  const parts = [
+    [Math.floor(won / EOK), '억'],
+    [Math.floor((won % EOK) / MAN), '만'],
+    [won % MAN, ''],
+  ].filter(([amount]) => amount > 0).map(([amount, unit]) => `${formatNumber(amount)}${unit}`);
+  return `${sign}${parts.join(' ')}원`;
+}
+
 // 그래프 축용 짧은 금액. 2,500,000 → '250만', 120,000,000 → '1.2억'
 export function formatMoneyShort(value) {
   if (!isNumber(value)) return EMPTY;

@@ -340,7 +340,8 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   const currencyField = createField({ label: '통화', control: currencyControl.element, group: true });
 
   const quantityField = createField({ label: '보유 수량', control: numberInput({ value: input.quantity, placeholder: '0' }), suffix: '주' });
-  const avgPriceField = createField({ label: '평단가', help: HELP.avgPrice, control: numberInput({ value: input.avgPrice, placeholder: '0' }), suffix: '원' });
+  // 주당 가격 칸이라 한글 단위 읽기(preview)는 끈다
+  const avgPriceField = createField({ label: '평단가', help: HELP.avgPrice, control: numberInput({ value: input.avgPrice, placeholder: '0' }), suffix: '원', preview: false });
   const accountField = createField({ label: '계좌', control: selectInput(ACCOUNTS, input.account) });
   const assetClassField = createField({
     label: '자산군', help: HELP.assetClass, control: selectInput(ASSET_CLASSES, input.assetClass, { placeholder: '골라 주세요' }),
@@ -354,8 +355,8 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     label: '섹터', presets: SECTOR_OPTIONS, rows: input.sectorRows, single: input.type === 'stock', help: HELP.sector,
   });
 
-  const manualPriceField = createField({ label: '현재가 (선택)', help: HELP.manualPrice, control: numberInput({ value: input.manualPrice }), suffix: '원' });
-  const dividendField = createField({ label: '연간 주당 배당금 (선택)', help: HELP.dividend, control: numberInput({ value: input.dividendPerShare }), suffix: '원' });
+  const manualPriceField = createField({ label: '현재가 (선택)', help: HELP.manualPrice, control: numberInput({ value: input.manualPrice }), suffix: '원', preview: false });
+  const dividendField = createField({ label: '연간 주당 배당금 (선택)', help: HELP.dividend, control: numberInput({ value: input.dividendPerShare }), suffix: '원', preview: false });
   const memoField = createField({ label: '메모 (선택)', control: el('textarea', { class: 'input textarea', rows: '2', maxlength: '200', value: input.memo }) });
 
   function applyCurrency(currency) {

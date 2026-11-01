@@ -9,6 +9,7 @@ import { el, clear, svg } from '../dom.js';
 import { formatDate, formatMoney, formatNumber, formatYearMonth } from '../format.js';
 import { openOtherAssetForm } from './other-asset-form.js';
 import { openPensionForm, openPensionKindChooser } from './pension-form.js';
+import { TOO_SMALL_MONTHLY } from '../pension.js';
 
 const STALE_TITLE = '마지막으로 갱신한 지 1년이 넘었어요. 공제회·연금공단 등에서 확인한 최신 금액으로 바꿔 주세요.';
 
@@ -108,6 +109,8 @@ export function render(root, { getState, updateState, subscribe }) {
         const contribution = pension.kind === 'accumulating' && pension.monthlyContribution > 0
           ? ` · 월 ${money(pension.monthlyContribution)} 납입(${formatYearMonth(pension.contributionEndDate)}까지)`
           : '';
+        // 예전에 만원 단위로 잘못 저장한 금액(150만원 → 150원)
+        const tooSmall = pension.kind === 'fixed' && pension.expectedMonthlyAmount > 0 && pension.expectedMonthlyAmount < TOO_SMALL_MONTHLY;
         return el('li', { class: 'pension-row' },
           el('button', { type: 'button', class: 'asset-item', onClick: () => openForm({ pension }) },
             el('span', { class: 'asset-item-head' },
@@ -117,7 +120,10 @@ export function render(root, { getState, updateState, subscribe }) {
                 staleBadge(pension)),
               el('span', { class: 'asset-value num', text: value })),
             el('span', { class: 'asset-meta', text: `${pension.category} · ${start} · ${term}${pension.applyTax ? ` · 세후 계산(세율 ${pct(pension.taxRate)})` : ''}` }),
-            el('span', { class: 'asset-meta', text: `${detail}${contribution}` })),
+            el('span', { class: 'asset-meta', text: `${detail}${contribution}` }),
+            tooSmall
+              ? el('span', { class: 'asset-meta warn-text', text: `월 ${pension.expectedMonthlyAmount}원으로 적혀 있어요. 눌러서 원 단위로 고쳐 주세요 (150만원 → 1500000).` })
+              : null),
           el('span', { class: 'order-buttons' },
             el('button', { type: 'button', class: 'icon-btn', 'aria-label': `${pension.name} 위로`, disabled: index === 0, onClick: () => move(index, -1) }, arrowIcon(true)),
             el('button', { type: 'button', class: 'icon-btn', 'aria-label': `${pension.name} 아래로`, disabled: index === state.pensions.length - 1, onClick: () => move(index, 1) }, arrowIcon(false))));

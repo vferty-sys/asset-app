@@ -19,7 +19,7 @@ const HELP = {
   startAge: '연금을 받기 시작하는 나이예요. 설정의 출생연도·출생월로 받기 시작하는 달을 계산해요.',
   payoutType: '종신은 평생 받는 연금이에요. 계산할 때는 설정의 기대 수명까지 받는다고 봐요.',
   applyTax: '연금을 받을 때 떼는 세금을 아래 세율 하나로 단순하게 빼요. 실제 세금과는 다를 수 있어요.',
-  expected: '연금공단·공무원연금공단 등에서 조회한 예상 월 수령액이에요.',
+  expected: ['연금공단·공무원연금공단 등에서 조회한 예상 월 수령액이에요.', '원 단위로 적어요. 150만원이면 1500000이에요.'],
   basis: [
     '현재가치: 물가를 생각해 지금 돈 가치로 바꾼 금액이에요.',
     '미래 금액: 실제로 받기 시작할 때 받는 금액이에요.',
@@ -97,7 +97,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
     const indexedToggle = createToggleField({ label: '물가연동', help: HELP.indexed, checked: input.inflationIndexed });
     indexedToggle.control.addEventListener('change', () => { indexedTouched = true; });
     fixedParts = {
-      expected: createField({ label: '예상 월 수령액', help: HELP.expected, control: numberInput({ value: input.expectedMonthlyAmount, placeholder: '0' }), suffix: '원' }),
+      expected: createField({ label: '예상 월 수령액', help: HELP.expected, control: numberInput({ value: input.expectedMonthlyAmount, placeholder: '예: 1,500,000' }), suffix: '원' }),
       basis: createField({ label: '금액 기준', help: HELP.basis, hint: '조회 화면의 안내 문구에서 금액 기준을 확인하세요.', control: basisControl.element, group: true }),
       basisControl,
       indexed: indexedToggle,
@@ -117,7 +117,7 @@ export function openPensionForm({ pension = null, kind = pension?.kind ?? 'fixed
     const linkOptions = [['', '연결 안 함'], ...LINKABLE_ACCOUNTS.map((account) => [account, `${account} 계좌`])];
     accParts = {
       linked: createField({ label: '보유 종목 계좌와 연결', help: HELP.linked, control: selectInput(linkOptions, input.linkedAccount) }),
-      balance: createField({ label: '현재 적립금', control: numberInput({ value: input.balance, placeholder: '0' }), suffix: '원' }),
+      balance: createField({ label: '현재 적립금', control: numberInput({ value: input.balance, placeholder: '예: 30,000,000' }), suffix: '원' }),
       baseDate: createField({ label: '적립금 기준일', control: dateInput({ value: input.baseDate }) }),
       monthly: createField({ label: '월 납입액 (선택)', control: numberInput({ value: input.monthlyContribution, placeholder: '0' }), suffix: '원' }),
       end: createField({ label: '납입 종료 시점', hint: '매달 넣는 돈이 없으면 비워 두세요.', control: dateInput({ value: input.contributionEndDate, month: true }) }),

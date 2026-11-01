@@ -1,6 +1,7 @@
 // 미래 예측 (요청서 6-6 ~ 6-9). 모든 계산은 '달' 단위다 (달 번호는 dates.js 참고).
 
 import { monthIndexAtAge, parseMonth, yearOf } from '../dates.js';
+import { TOO_SMALL_MONTHLY } from '../pension.js';
 
 export const SCENARIOS = Object.freeze(['low', 'base', 'high']);
 
@@ -177,6 +178,10 @@ export function planPension(pension, {
   const inRange = (month) => months > 0 && month >= startMonth && month < endMonth;
 
   if (pension.kind === 'fixed') {
+    // 예전에 만원 단위로 잘못 저장한 금액(150만원 → 150)은 계산은 그대로 하고 알린다
+    if (pension.expectedMonthlyAmount > 0 && pension.expectedMonthlyAmount < TOO_SMALL_MONTHLY) {
+      warnings.push(`예상 월 수령액이 ${pension.expectedMonthlyAmount}원으로 적혀 있어요. 원 단위로 고쳐 주세요 (150만원 → 1500000).`);
+    }
     // 조회 금액 → 받기 시작할 때의 실제 금액
     let startNominal = pension.amountBasis === 'future'
       ? pension.expectedMonthlyAmount

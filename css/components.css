@@ -248,6 +248,14 @@ select.input {
   font-size: 0.8125rem;
 }
 
+/* 원 금액을 한글 단위로 읽어 주는 줄: '= 150만원' */
+.field-preview {
+  margin-top: 6px;
+  color: var(--primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
 .field-error {
   margin-top: 6px;
   color: var(--danger);

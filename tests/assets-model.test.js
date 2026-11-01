@@ -193,3 +193,16 @@ test('날짜 도우미', () => {
   assert.equal(isOlderThan('2026-01-01', 365, NOW), false);
   assert.equal(isOlderThan(null, 365, NOW), false);
 });
+
+test('연금 금액은 원 단위: 월 1만원도 안 되는 확정 수령액은 저장하지 않고, 적은 적립금은 알려만 준다', () => {
+  // 150만원을 만원 단위로 생각하고 150이라고 적은 경우
+  const wrong = validatePension(fixedInput({ expectedMonthlyAmount: '150' }), { now: NOW });
+  assert.equal(wrong.ok, false);
+  assert.match(wrong.errors.expectedMonthlyAmount, /월 150원으로 적혀 있어요.*1500000/);
+  assert.equal(validatePension(fixedInput({ expectedMonthlyAmount: '1,500,000' }), { now: NOW }).ok, true);
+  assert.equal(validatePension(fixedInput({ expectedMonthlyAmount: '0' }), { now: NOW }).ok, true);
+
+  const small = validatePension(accInput({ balance: '3000' }), { now: NOW });
+  assert.equal(small.ok, true);
+  assert.match(small.warnings.balance, /적립금이 3000원으로 적혀 있어요/);
+});

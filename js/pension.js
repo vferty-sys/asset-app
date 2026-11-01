@@ -15,6 +15,10 @@ export const INFLATION_INDEXED_CATEGORIES = Object.freeze(['공무원연금', '�
 // 연금마다 정하는 세율(%). 처음 값(기본값)은 설정의 '연금 세율 기본값'
 const TAX_RATE_SPEC = { type: 'number', min: 0, max: 50 };
 
+// 이보다 작은 월 수령액·적립금은 만원 단위로 잘못 적은 것으로 본다 (금액 칸은 원 단위)
+export const TOO_SMALL_MONTHLY = 10_000;
+const TOO_SMALL_BALANCE = 10_000;
+
 const COMMON_FIELDS = {
   name: { type: 'string', default: '' },
   category: { type: 'enum', options: PENSION_CATEGORIES, default: '기타' },
@@ -108,6 +112,10 @@ export function validatePension(input, {
 
   if (fields.kind === 'fixed') {
     take('expectedMonthlyAmount', { type: 'number', min: 0 });
+    // 만원 단위로 적는 실수(150만원 → 150) 막기: 월 1만원도 안 되는 연금은 없다고 보고 저장하지 않는다
+    if (fields.expectedMonthlyAmount > 0 && fields.expectedMonthlyAmount < TOO_SMALL_MONTHLY) {
+      errors.expectedMonthlyAmount = `월 ${fields.expectedMonthlyAmount}원으로 적혀 있어요. 원 단위로 적어 주세요. 예: 150만원 → 1500000`;
+    }
     take('amountBasis', { type: 'enum', options: AMOUNT_BASES }, '조회한 금액이 현재가치인지 미래 금액인지 골라 주세요.');
     take('inflationIndexed', { type: 'boolean' });
     take('inquiryDate', { type: 'date', nullable: true });
@@ -128,6 +136,10 @@ export function validatePension(input, {
     } else {
       take('balance', { type: 'number', min: 0 });
       take('baseDate', { type: 'date' }, '적립금 기준일을 입력해 주세요.');
+      // 새로 만든 계좌면 적을 수 있는 금액이라 막지는 않고 알려만 준다
+      if (fields.balance > 0 && fields.balance < TOO_SMALL_BALANCE) {
+        warnings.balance = `적립금이 ${fields.balance}원으로 적혀 있어요. 금액은 원 단위예요 (3,000만원 → 30000000).`;
+      }
     }
     take('monthlyContribution', { type: 'number', min: 0, nullable: true });
     take('contributionEndDate', { type: 'yearMonth', nullable: true });
