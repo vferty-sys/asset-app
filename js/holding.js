@@ -1,6 +1,7 @@
 // 보유 종목 데이터의 정리와 입력 검증. 입력 화면, CSV 붙여넣기, 저장 데이터 정리에서 함께 쓴다.
 
 import { ACCOUNTS, ASSET_CLASSES, CURRENCIES, ETF_SPREADS, HOLDING_TYPES } from './constants.js';
+import { COUNTRY_PRESETS, presetMix } from './country-weights.js';
 import { coerceValue, isPlainObject, parseNumberInput, sanitizeObject } from './validate.js';
 import { createId } from './id.js';
 
@@ -92,6 +93,13 @@ function spreadFor(type, spread, name, ticker) {
   return spread ?? guessEtfSpread({ name, ticker });
 }
 
+// ETF만 국가 비중표 항목(다국가 지수)을 가진다. 비중표에서 빠진 항목도 지우지 않고 둔다 (분석에서 글로벌(다국가)로 봄).
+function presetFor(type, preset) {
+  if (type !== 'etf' || typeof preset !== 'string') return null;
+  const key = preset.trim();
+  return key && key.length <= 40 ? key : null;
+}
+
 // 저장된(또는 복원한) 종목을 현재 구조로 맞춘다. 형식이 틀린 값은 기본값으로 바꾼다.
 export function normalizeHolding(raw) {
   const source = isPlainObject(raw) ? raw : {};
@@ -110,6 +118,7 @@ export function normalizeHolding(raw) {
     account: fields.account,
     assetClass: fields.assetClass,
     countryMix: cleanMix(source.countryMix),
+    countryPreset: presetFor(fields.type, source.countryPreset),
     sectorMix: cleanMix(source.sectorMix),
     dividendPerShare: fields.dividendPerShare,
     memo: fields.memo,
@@ -159,7 +168,8 @@ function checkTicker(ticker) {
 
 // 입력 화면·CSV에서 받은 값(문자열 포함)을 검사해서 저장할 종목을 만든다.
 // input: { id?, name, ticker, type, etfSpread?, currency, quantity, avgPrice, manualPrice, account, assetClass,
-//          countryRows: [{ name, percent }], sectorRows, dividendPerShare, memo }
+//          countryRows: [{ name, percent }], countryPreset?, sectorRows, dividendPerShare, memo }
+//   countryPreset: ETF의 국가 비중표 항목 (고르면 countryRows 대신 비중표로 나눈다)
 // 돌려주는 값: { ok, value, errors: { 필드: 문구 }, warnings: { 필드: 문구 } }
 export function validateHolding(input, { allowFractionalUS = false, existing = [] } = {}) {
   const errors = {};
@@ -196,7 +206,14 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
   }
 
   const single = fields.type === 'stock';
+  const countryPreset = presetFor(fields.type, input.countryPreset);
+  if (countryPreset && !COUNTRY_PRESETS.includes(countryPreset)) {
+    errors.countryMix = `국가 비중표에 없는 항목이에요 (${countryPreset}). ${COUNTRY_PRESETS.join(' / ')} 중에서 골라 주세요.`;
+  } else if (countryPreset) {
+    fields.countryMix = presetMix(countryPreset); // 고를 때의 비중 (분석은 지금 비중표 값으로 계산)
+  }
   for (const [key, rowsKey, label] of [['countryMix', 'countryRows', '국가'], ['sectorMix', 'sectorRows', '섹터']]) {
+    if (key === 'countryMix' && countryPreset) continue;
     const mix = validateMix(input[rowsKey], { label, single });
     if (mix.error) errors[key] = mix.error;
     else fields[key] = mix.value;
@@ -229,6 +246,7 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
       account: fields.account,
       assetClass: fields.assetClass,
       countryMix: fields.countryMix,
+      countryPreset,
       sectorMix: fields.sectorMix,
       dividendPerShare: fields.dividendPerShare,
       memo: fields.memo,
@@ -252,6 +270,7 @@ export function holdingToInput(holding) {
     account: holding.account,
     assetClass: holding.assetClass,
     countryRows: mixToRows(holding.countryMix),
+    countryPreset: holding.countryPreset ?? '',
     sectorRows: mixToRows(holding.sectorMix),
     dividendPerShare: text(holding.dividendPerShare),
     memo: holding.memo ?? '',

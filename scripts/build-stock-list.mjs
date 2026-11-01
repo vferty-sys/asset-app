@@ -76,7 +76,9 @@ function etfItem({ ticker, name, aliases = [], currency, group, meta, marketCap 
   const result = classifyEtf(name, { ...meta, ticker });
   return {
     t: ticker, n: name, ...(aliases.length ? { al: aliases } : {}), k: 'e', c: currency,
-    co: compactMix(result.countryMix), se: compactMix(result.sectorMix), a: result.assetClass, sp: result.spread,
+    // cp: 국가 비중표 항목 (다국가 지수 ETF). 앱은 이 항목의 지금 비중으로 계산하고, co는 만들 때의 비중(참고용)
+    co: compactMix(result.countryMix), ...(result.countryPreset ? { cp: result.countryPreset } : {}),
+    se: compactMix(result.sectorMix), a: result.assetClass, sp: result.spread,
     ...(result.approx ? { ax: 1 } : {}), ...sizeField(marketCap), g: group,
   };
 }

@@ -3,6 +3,8 @@
 import {
   ACCOUNTS, ASSET_CLASSES, BROAD_ASSET_CLASSES, COUNTRY_OPTIONS, ETF_SPREADS, ETF_SPREAD_LABELS, SECTOR_OPTIONS,
 } from '../constants.js';
+import { guessCountry } from '../classify.js';
+import { COUNTRY_PRESETS, COUNTRY_WEIGHTS, GLOBAL_COUNTRY, presetMix } from '../country-weights.js';
 import { guessEtfSpread, guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
 import { findByTicker, loadStockList } from '../stock-list.js';
 import { parseNumberInput } from '../validate.js';
@@ -29,7 +31,14 @@ const HELP = {
   ],
   avgPrice: '한 주를 평균 얼마에 샀는지예요. 증권사 앱의 "평균단가"를 보면 돼요.',
   manualPrice: '구글 시트에서 가격을 받아오지 못할 때 이 값을 써요. 비워 두면 평단가로 계산하고 경고를 보여줘요.',
-  country: '회사(또는 ETF가 담은 회사들)가 어느 나라에 있는지예요.',
+  country: [
+    '실제로 투자하는 나라예요. 개별 주식은 본사가 있는 나라예요.',
+    'ETF는 상장된 나라가 아니라 담은 회사들의 나라로 적어요. 예: TIGER 미국S&P500은 한국에 상장됐지만 미국이에요.',
+    '한 나라: S&P500·코스피200·니케이225처럼 한 나라에만 투자하는 ETF',
+    '비중표: MSCI World·ACWI·신흥국처럼 여러 나라에 투자하는 ETF를 비중표 비율대로 나눠요',
+    '직접 나누기: 운용사 홈페이지의 나라별 비중을 보고 직접 적어요',
+    '미분류: 비중표에 없는 다국가 ETF. 글로벌(다국가)로 모아 계산해요',
+  ],
   sector: '섹터는 기술·금융·소비재처럼 회사가 하는 일의 분야예요.',
   dividend: '1년 동안 1주당 받는 배당금 합계예요. 모르면 비워 두세요.',
   spread: [
@@ -56,6 +65,7 @@ function emptyInput() {
     account: '일반',
     assetClass: '',
     countryRows: [{ name: '', percent: '100' }],
+    countryPreset: '',
     sectorRows: [{ name: '', percent: '100' }],
     dividendPerShare: '',
     memo: '',
@@ -66,12 +76,11 @@ function round2(n) {
   return Math.round(n * 100) / 100;
 }
 
-// 국가·섹터 입력. single이면 하나만 고르고, 아니면 이름+비율 여러 줄을 입력한다.
-function createMixEditor({ label, presets, rows, single, help, onChange }) {
+// 국가·섹터 비율 줄. single이면 하나만 고르고, 아니면 이름+비율 여러 줄을 입력한다.
+function createMixRows({ label, presets, rows, single, onChange }) {
   let isSingle = single;
   let current = rows.map((row) => ({ name: row.name ?? '', percent: row.percent == null ? '' : String(row.percent) }));
   const container = el('div', { class: 'mix-editor' });
-  const field = createField({ label, help, control: container, group: true, hint: single ? '' : ETF_MIX_HINT });
 
   // CSV·백업으로 들어온, 목록에 없는 이름도 선택지에 남겨 둔다.
   const optionsFor = (name) => (name && !presets.includes(name) ? [...presets, name] : presets);
@@ -141,8 +150,7 @@ function createMixEditor({ label, presets, rows, single, help, onChange }) {
 
   draw();
   return {
-    element: field.element,
-    setError: field.setError,
+    element: container,
     getRows: () => current.map((row) => ({ ...row })),
     setRows(next) {
       current = next.map((row) => ({ ...row }));
@@ -159,8 +167,127 @@ function createMixEditor({ label, presets, rows, single, help, onChange }) {
         current = [{ name: current[0]?.name ?? '', percent: '100' }];
       }
       isSingle = next;
-      field.setHint(next ? '' : ETF_MIX_HINT);
       draw();
+    },
+  };
+}
+
+// 섹터 입력 (개별 주식은 하나, ETF는 비율로 나눔)
+function createMixEditor({ label, presets, rows, single, help, onChange }) {
+  const control = createMixRows({ label, presets, rows, single, onChange });
+  const field = createField({ label, help, control: control.element, group: true, hint: single ? '' : ETF_MIX_HINT });
+  return {
+    element: field.element,
+    setError: field.setError,
+    getRows: control.getRows,
+    setRows: control.setRows,
+    isBlank: control.isBlank,
+    setSingle(next) {
+      control.setSingle(next);
+      field.setHint(next ? '' : ETF_MIX_HINT);
+    },
+  };
+}
+
+// 국가 입력. 국가는 실제 투자 대상 기준이다 (ETF는 상장된 나라가 아니라 담은 회사들의 나라).
+//  개별 주식: 본사 나라 하나
+//  ETF: 한 나라(S&P500·코스피200 …) / 비중표(MSCI World 같은 다국가 지수, js/country-weights.js) /
+//       직접 나누기(운용사 자료를 보고 비율 입력) / 미분류(비중표에 없는 다국가 → 글로벌(다국가))
+const COUNTRY_MODES = [['single', '한 나라'], ['preset', '비중표'], ['split', '직접 나누기'], ['global', '미분류']];
+const COUNTRY_CHOICES = COUNTRY_OPTIONS.filter((name) => name !== GLOBAL_COUNTRY);
+const PRESET_HINT = `비중표(${COUNTRY_WEIGHTS.meta.updated_at} 기준, 대략값)로 나라별로 나눠 계산해요. 비중표를 고치면 바로 반영돼요.`;
+
+function countryModeOf({ type, rows, preset }) {
+  if (type !== 'etf') return 'single';
+  if (preset) return 'preset';
+  const named = rows.filter((row) => row.name);
+  if (named.length === 1 && named[0].name === GLOBAL_COUNTRY) return 'global';
+  return named.length > 1 ? 'split' : 'single';
+}
+
+function createCountryEditor({ rows, preset, type, onChange }) {
+  const box = el('div', { class: 'country-editor' });
+  const field = createField({ label: '국가', help: HELP.country, control: box, group: true });
+  let isEtf = type === 'etf';
+  let mode = countryModeOf({ type, rows, preset });
+
+  const rowsControl = createMixRows({
+    label: '국가', presets: COUNTRY_CHOICES, rows: mode === 'global' || mode === 'preset' ? [{ name: '', percent: '100' }] : rows,
+    single: mode !== 'split', onChange,
+  });
+  const presetSelect = selectInput(COUNTRY_PRESETS, COUNTRY_PRESETS.includes(preset) ? preset : '', { placeholder: '다국가 지수를 골라 주세요' });
+  presetSelect.setAttribute('aria-label', '국가 비중표 항목');
+  const presetPreview = el('p', { class: 'country-preview muted small' });
+  const presetBox = el('div', { class: 'country-preset' }, presetSelect, presetPreview);
+  const globalNote = el('p', {
+    class: 'muted small',
+    text: `나라별로 나누지 않고 '${GLOBAL_COUNTRY}'로 모아 계산해요. 쏠림 경고에서는 빼고, 분석 화면에 "국가별 분해 미반영"으로 알려 드려요.`,
+  });
+  const modeControl = segmented({
+    options: COUNTRY_MODES,
+    value: mode,
+    onChange: (next) => {
+      setMode(next);
+      onChange?.();
+    },
+  });
+  modeControl.element.classList.add('country-modes');
+  modeControl.element.setAttribute('aria-label', 'ETF 국가 입력 방식');
+  box.append(modeControl.element, rowsControl.element, presetBox, globalNote);
+
+  function showPreview() {
+    const mix = presetMix(presetSelect.value);
+    presetPreview.textContent = mix
+      ? Object.entries(mix).map(([country, percent]) => `${country} ${percent}%`).join(' · ')
+      : '';
+  }
+  presetSelect.addEventListener('change', () => {
+    showPreview();
+    onChange?.();
+  });
+
+  function setMode(next) {
+    mode = isEtf ? next : 'single';
+    modeControl.value = mode;
+    modeControl.element.hidden = !isEtf;
+    rowsControl.element.hidden = !(mode === 'single' || mode === 'split');
+    rowsControl.setSingle(mode !== 'split');
+    presetBox.hidden = mode !== 'preset';
+    globalNote.hidden = mode !== 'global';
+    const hints = { single: isEtf ? 'S&P500·코스피200처럼 한 나라에만 투자하는 ETF예요.' : '', preset: PRESET_HINT, split: ETF_MIX_HINT, global: '' };
+    field.setHint(hints[mode]);
+    showPreview();
+  }
+  setMode(mode);
+
+  return {
+    element: field.element,
+    setError: field.setError,
+    setType(nextType) {
+      isEtf = nextType === 'etf';
+      setMode(isEtf ? mode : 'single');
+    },
+    // 목록·짐작한 값으로 채운다: { countryMix, countryPreset }
+    setValue({ countryMix = null, countryPreset = null } = {}) {
+      const nextRows = Object.entries(countryMix ?? {}).map(([name, percent]) => ({ name, percent: String(percent) }));
+      const nextMode = countryModeOf({ type: isEtf ? 'etf' : 'stock', rows: nextRows, preset: countryPreset });
+      if (nextMode === 'preset') presetSelect.value = countryPreset;
+      if (nextMode === 'single' || nextMode === 'split') {
+        rowsControl.setSingle(nextMode === 'single');
+        rowsControl.setRows(nextMode === 'single' ? [{ name: nextRows[0]?.name ?? '', percent: '100' }] : nextRows);
+      }
+      setMode(nextMode);
+    },
+    // 검사(validateHolding)에 넘길 값
+    getValue() {
+      if (mode === 'preset') return { countryRows: [], countryPreset: presetSelect.value || null };
+      if (mode === 'global') return { countryRows: [{ name: GLOBAL_COUNTRY, percent: '100' }], countryPreset: null };
+      return { countryRows: rowsControl.getRows(), countryPreset: null };
+    },
+    isBlank() {
+      if (mode === 'preset') return !presetSelect.value;
+      if (mode === 'global') return false;
+      return rowsControl.isBlank();
     },
   };
 }
@@ -185,7 +312,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     options: TYPE_OPTIONS,
     value: input.type,
     onChange: (type) => {
-      countryEditor.setSingle(type === 'stock');
+      countryEditor.setType(type);
       sectorEditor.setSingle(type === 'stock');
       refreshSpread();
     },
@@ -219,8 +346,8 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     label: '자산군', help: HELP.assetClass, control: selectInput(ASSET_CLASSES, input.assetClass, { placeholder: '골라 주세요' }),
   });
 
-  const countryEditor = createMixEditor({
-    label: '국가', presets: COUNTRY_OPTIONS, rows: input.countryRows, single: input.type === 'stock', help: HELP.country,
+  const countryEditor = createCountryEditor({
+    rows: input.countryRows, preset: input.countryPreset, type: input.type,
     onChange: () => { countryTouched = true; },
   });
   const sectorEditor = createMixEditor({
@@ -241,16 +368,20 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   }
   applyCurrency(input.currency);
 
-  // 티커를 적으면 거래소를 보고 통화·국가를 채운다 (직접 고른 적이 없을 때만).
+  // 티커를 적으면 거래소를 보고 통화를 채운다 (직접 고른 적이 없을 때만).
+  // 국가는 거래소가 아니라 투자 대상으로: 종목 목록에 있으면 목록 값, 없으면 이름으로 짐작한다.
+  // (예: KRX:360750 TIGER 미국S&P500 → 한국이 아니라 미국) 짐작할 수 없는 ETF는 비워 두고 직접 고르게 한다.
   tickerInput.addEventListener('change', () => {
     tickerInput.value = normalizeTicker(tickerInput.value);
     const guess = guessFromTicker(tickerInput.value);
-    if (!guess) return;
-    if (!currencyTouched) {
+    if (guess && !currencyTouched) {
       currencyControl.value = guess.currency;
       applyCurrency(guess.currency);
     }
-    if (!countryTouched || countryEditor.isBlank()) countryEditor.setRows([{ name: guess.country, percent: '100' }]);
+    if (countryTouched && !countryEditor.isBlank()) return;
+    const listed = findByTicker(stockItems, tickerInput.value);
+    const country = listed?.countryMix ? listed : guessCountry({ name: nameField.control.value, ticker: tickerInput.value, type: typeControl.value });
+    if (country) countryEditor.setValue(country);
   });
 
   // ETF 분산 정도는 ETF일 때만 보여준다. 채권·현금성 ETF는 점수에서 시장 전체형처럼 보므로 고를 필요가 없다.
@@ -272,13 +403,13 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     nameField.control.value = item.name;
     tickerInput.value = item.ticker;
     typeControl.value = item.type;
-    countryEditor.setSingle(item.type === 'stock');
+    countryEditor.setType(item.type);
     sectorEditor.setSingle(item.type === 'stock');
     currencyControl.value = item.currency;
     applyCurrency(item.currency);
     currencyTouched = true;
     if (item.countryMix) {
-      countryEditor.setRows(rowsOf(item.countryMix));
+      countryEditor.setValue(item);
       countryTouched = true;
     }
     if (item.sectorMix) sectorEditor.setRows(rowsOf(item.sectorMix));
@@ -365,7 +496,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
       manualPrice: manualPriceField.control.value,
       account: accountField.control.value,
       assetClass: assetClassField.control.value,
-      countryRows: countryEditor.getRows(),
+      ...countryEditor.getValue(),
       sectorRows: sectorEditor.getRows(),
       dividendPerShare: dividendField.control.value,
       memo: memoField.control.value,

@@ -130,3 +130,26 @@ test('ETF 분산 정도 열(선택): 이름으로 적고, 비우면 종목명으
   const { rows } = parseHoldingsCsv(text);
   assert.deepEqual(rows.map((row) => row.holding.etfSpread), ['market', 'market', 'single', null]);
 });
+
+test('국가 칸을 비우면 투자 대상을 이름으로 짐작: 국내 상장 ETF라도 미국 지수면 미국, 모르면 글로벌(다국가)', () => {
+  const text = [
+    '종목명,티커,종류,수량,평단가',
+    'TIGER 미국S&P500,KRX:360750,ETF,10,20000',
+    'KODEX 선진국MSCI World,KRX:251350,ETF,5,20000',
+    'TIME 글로벌AI인공지능액티브,KRX:456600,ETF,3,15000',
+    '삼성전자,KRX:005930,주식,1,60000',
+  ].join('\n');
+  const values = parseHoldingsCsv(text).rows.map((row) => row.holding);
+  assert.deepEqual(values[0].countryMix, { 미국: 100 });
+  assert.equal(values[0].countryPreset, null);
+  assert.equal(values[1].countryPreset, 'MSCI World');
+  assert.deepEqual(values[2].countryMix, { '글로벌(다국가)': 100 });
+  assert.deepEqual(values[3].countryMix, { 한국: 100 });
+});
+
+test('국가 칸에 비중표 이름(MSCI World 등)을 적으면 비중표로 나눈다', () => {
+  const text = '종목명,티커,종류,수량,평단가,국가\n어떤 선진국 ETF,KRX:999999,ETF,1,10000,msci world';
+  const [row] = parseHoldingsCsv(text).rows;
+  assert.equal(row.status, 'add');
+  assert.equal(row.holding.countryPreset, 'MSCI World');
+});

@@ -1,6 +1,8 @@
 // 앱 전체에서 쓰는 상수와 기본값.
 // 숫자 기준값은 여기만 고치면 앱 전체에 반영된다.
 
+import { GLOBAL_COUNTRY } from './country-weights.js';
+
 export const APP_NAME = '내 자산 한눈에';
 
 // 같은 github.io 주소의 다른 앱과 겹치지 않도록 모든 키에 접두어를 붙인다.
@@ -24,7 +26,13 @@ export const ETF_SPREAD_COUNTS = Object.freeze({ market: 10, theme: 3, single: 1
 export const BROAD_ASSET_CLASSES = Object.freeze(['채권', '현금성']);
 
 // 국가·섹터 선택지. CSV나 백업으로 들어온 다른 이름도 그대로 쓸 수 있다.
-export const COUNTRY_OPTIONS = Object.freeze(['한국', '미국', '중국', '일본', '유럽', '신흥국', '기타']);
+// 국가는 실제 투자 대상 기준 (ETF는 상장된 나라가 아니라 담은 회사들의 나라). 국가 비중표(country-weights.js)의
+// 나라는 모두 여기 있어야 한다. 유럽·신흥국은 목록에 없는 나라(네덜란드, 인도네시아 …)를 넣는 지역 묶음,
+// 글로벌(다국가)는 비중표에 없는 다국가 ETF를 임시로 넣는 이름이다.
+export const COUNTRY_OPTIONS = Object.freeze([
+  '한국', '미국', '중국', '일본', '대만', '인도', '베트남', '영국', '독일', '프랑스', '스위스', '캐나다', '호주', '브라질',
+  '유럽', '신흥국', GLOBAL_COUNTRY, '기타',
+]);
 export const SECTOR_OPTIONS = Object.freeze([
   '기술', '통신', '소비재', '필수소비재', '헬스케어', '금융', '산업재',
   '에너지', '소재', '유틸리티', '부동산', '채권', '현금성', '기타',
@@ -119,7 +127,7 @@ export const PENSION_ASSET_CLASS = '연금 적립금';
 export const OTHER_ACCOUNT = '기타 금융자산';
 // 한 업종·한 나라가 아니므로 쏠림 경고와 점수에서 빼는 이름
 export const NON_SECTOR_NAMES = Object.freeze(['채권', '현금성', '기타', UNCLASSIFIED]);
-export const NON_COUNTRY_NAMES = Object.freeze(['기타', UNCLASSIFIED]);
+export const NON_COUNTRY_NAMES = Object.freeze(['기타', GLOBAL_COUNTRY, UNCLASSIFIED]);
 
 // ── 포트폴리오 건강도 점수 (요청서 6-3) — 배점과 기준값은 여기서만 고친다 ──
 //  fullAt: 만점이 되는 값, zeroAt: 0점이 되는 값, 그 사이는 선형

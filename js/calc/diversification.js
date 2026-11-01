@@ -1,10 +1,12 @@
 // 분산 집계 (요청서 6-2)와 쏠림 경고.
-//  국가 비중 = Σ(종목 원화 평가금액 × countryMix[국가] / 100) / 합계 — 섹터도 같은 방식
+//  국가 비중 = Σ(종목 원화 평가금액 × 국가 비율[국가] / 100) / 합계 — 섹터도 같은 방식
+//  국가는 실제 투자 대상 기준이다. 다국가 지수 ETF(국가 비중표 항목을 고른 종목)는 비중표의 지금 값으로 나눈다.
 
 import {
   BROAD_ASSET_CLASSES, DEPOSIT_ASSET_CLASS, ETF_SPREAD_COUNTS, NON_COUNTRY_NAMES, NON_SECTOR_NAMES, OTHER_ACCOUNT,
   PENSION_ASSET_CLASS, UNCLASSIFIED,
 } from '../constants.js';
+import { holdingCountryMix } from '../country-weights.js';
 import { formatPercentShort, josa } from '../format.js';
 import { otherFinancialAssets } from './totals.js';
 
@@ -45,7 +47,7 @@ export function analyzeDiversification(rows, { includeOthers = false, otherAsset
     stockTotal,
     othersTotal: others.total,
     total: stockTotal + others.total,
-    country: toBreakdown(valued.flatMap((row) => splitByMix(row.valueKRW, row.holding.countryMix))),
+    country: toBreakdown(valued.flatMap((row) => splitByMix(row.valueKRW, holdingCountryMix(row.holding)))),
     sector: toBreakdown(valued.flatMap((row) => splitByMix(row.valueKRW, row.holding.sectorMix))),
     assetClass: toBreakdown([
       ...valued.map((row) => [row.holding.assetClass, row.valueKRW]),
