@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   formatMoney, formatNumber, formatPrice, formatPercent, formatPercentShort, formatDate, formatYearMonth, formatQuoteTime,
-  josa, pnlClass, EMPTY,
+  formatWonExact, josa, pnlClass, EMPTY,
 } from '../js/format.js';
 
 test('안내 문장용 짧은 퍼센트', () => {
@@ -99,4 +99,15 @@ test('pnlClass', () => {
   assert.equal(pnlClass(-1), 'is-loss');
   assert.equal(pnlClass(0), 'is-flat');
   assert.equal(pnlClass(null), 'is-flat');
+});
+
+test('원 금액을 한글 단위로 빠짐없이 (입력 칸 아래 확인용)', () => {
+  assert.equal(formatWonExact(150), '150원');
+  assert.equal(formatWonExact(1380.5), '1,380.5원');
+  assert.equal(formatWonExact(1_500_000), '150만원');
+  assert.equal(formatWonExact(1_234_567), '123만 4,567원');
+  assert.equal(formatWonExact(300_000_000), '3억원');
+  assert.equal(formatWonExact(1_234_500_000), '12억 3,450만원');
+  assert.equal(formatWonExact(100_000_003), '1억 3원');
+  assert.equal(formatWonExact(Number.NaN), EMPTY);
 });
