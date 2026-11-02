@@ -5,8 +5,8 @@ import { valuePortfolio } from '../calc/valuation.js';
 import { holdingCountryMix } from '../country-weights.js';
 import { isMixComplete } from '../holding.js';
 import { findPriceIssues } from '../price.js';
-import { getMarket, subscribeMarket } from '../market.js';
-import { el, clear, helpTip, openModal } from '../dom.js';
+import { getMarket, getPendingTickers, subscribeMarket } from '../market.js';
+import { el, clear, copyText, helpTip, openModal, showToast } from '../dom.js';
 import { formatMoney, formatNumber, formatPercent, formatPrice, formatQuoteTime, pnlClass, EMPTY } from '../format.js';
 import { openHoldingForm } from './holding-form.js';
 import { openCsvImport } from './holdings-csv.js';
@@ -200,11 +200,37 @@ export function render(root, { getState, updateState, subscribe }) {
           '구글 시트를 연결하지 않아 직접 입력한 현재가로 계산해요. ',
           el('a', { href: '#guide', text: '시트 연결 방법' }))));
 
+    // 시트에 새로 넣고 가격을 기다리는 종목은 오류가 아니라 '받는 중'으로 따로 알린다
+    const pending = new Set(getPendingTickers());
+    const waitingTickers = issues.sheetErrors.filter((ticker) => pending.has(ticker));
+    issues.sheetErrors = issues.sheetErrors.filter((ticker) => !pending.has(ticker));
+    if (waitingTickers.length > 0) {
+      root.append(el('p', {
+        class: 'banner banner-info',
+        role: 'status',
+        text: `시트에 새로 넣은 종목 ${waitingTickers.length}개(${tickerList(waitingTickers)})의 가격을 받는 중이에요. 몇 초 뒤에 들어와요.`,
+      }));
+    }
+
     // 확인할 것들을 한 상자에 모아 보여준다.
     const notices = [];
     const warn = (...content) => notices.push(el('li', {}, ...content));
     if (issues.notInSheet.length > 0) {
-      warn(`시트에 없는 종목 ${issues.notInSheet.length}개 (${tickerList(issues.notInSheet)}) — 가격 없음. 시트 A열에 티커를 추가해 주세요.`);
+      const count = issues.notInSheet.length;
+      if (market.canAddTickers) {
+        // 최신 시트 코드: 앱이 시세를 받을 때 이 티커를 시트에 넣는다 (종목을 추가하면 잠시 뒤 알아서)
+        warn(`시트에 아직 없는 종목 ${count}개 (${tickerList(issues.notInSheet)}) — 앱이 시트에 넣고 가격을 받아와요. `
+          + '이 안내가 계속 보이면 위쪽 시세 시각을 눌러 다시 받아 보세요.');
+      } else {
+        const copy = el('button', { type: 'button', class: 'btn btn-small', text: '티커 복사' });
+        copy.addEventListener('click', async () => {
+          const copied = await copyText(issues.notInSheet.join('\n'));
+          showToast(copied ? '티커를 복사했어요. 시트 A열 빈 칸에 붙여넣으세요.' : '복사하지 못했어요. 티커를 직접 적어 주세요.', copied ? 'info' : 'danger', 3500);
+        });
+        warn(`시트에 없는 종목 ${count}개 (${tickerList(issues.notInSheet)}) — 가격 없음. `,
+          el('a', { href: '#guide', text: '시트 코드를 최신으로 바꾸면' }),
+          ' 앱이 알아서 넣어 줘요. 지금 바로 하려면 티커를 복사해 시트 A열에 붙여넣으세요. ', copy);
+      }
     }
     if (issues.sheetErrors.length > 0) {
       warn(`시트에서 가격을 받지 못한 종목 ${issues.sheetErrors.length}개 (${tickerList(issues.sheetErrors)}) — 시트에 #N/A가 보이면 티커 형식(예: KRX:005930)을 확인해 주세요.`);
@@ -217,7 +243,9 @@ export function render(root, { getState, updateState, subscribe }) {
         market.mode === 'sheet' ? '시트의 CURRENCY:USDKRW 줄에 환율 숫자가 나오는지(#N/A가 아닌지) 확인하거나 ' : '',
         el('a', { href: '#settings', text: '설정에서 환율 입력하기' }));
     }
-    if (portfolio.avgPriceCount > 0) {
+    // 평단가로 계산한 종목이 모두 가격을 기다리는 종목이면 위 '받는 중' 안내로 충분하다
+    const avgOnlyWaiting = portfolio.rows.filter((row) => row.priceSource === 'avg').every((row) => pending.has(row.holding.ticker));
+    if (portfolio.avgPriceCount > 0 && !avgOnlyWaiting) {
       warn(market.mode === 'sheet'
         ? `현재가를 받지 못한 종목 ${portfolio.avgPriceCount}개는 평단가로 계산했어요.`
         : `현재가가 없는 종목 ${portfolio.avgPriceCount}개는 평단가로 계산했어요. 종목을 눌러 현재가를 입력하거나 구글 시트를 연결해 주세요.`);

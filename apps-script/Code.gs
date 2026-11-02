@@ -2,6 +2,8 @@
  * 내 자산 한눈에 — 구글 시트 시세 연동 코드 (Apps Script)
  *
  * 이 코드는 시트에 적힌 티커의 현재가·통화와 달러 환율을 앱이 읽을 수 있는 JSON으로 돌려줍니다.
+ * 앱이 시세를 받을 때 보유 종목의 티커(종목 코드)를 함께 보내면, 시트에 없는 티커를 A열 끝에 알아서 넣어요.
+ * (수량·평단가·금액은 보내지 않아요) 그래서 티커를 직접 적지 않아도 돼요.
  * 시트에는 티커와 시세만 두세요. 수량·평단가·금액 같은 개인 정보는 절대 적지 마세요.
  * 기기 연동을 켜면 앱이 '연동 비밀번호'로 암호화한 자산 데이터를 숨긴 탭('앱 데이터')에 저장합니다 (맨 아래 '기기 연동').
  * 이 코드는 어떤 정보도 다른 곳으로 보내지 않습니다.
@@ -15,7 +17,8 @@
  *    4    NASDAQ:QQQ         =GOOGLEFINANCE(A4, "price")           =GOOGLEFINANCE(A4, "currency")
  *    …    (종목마다 한 줄씩)
  *
- *  - A열: 앱에 입력한 티커와 똑같이, 띄어쓰기 없이 적어요. 예) KRX:005930, KOSDAQ:247540, NASDAQ:QQQ, NYSEARCA:SCHD
+ *  - A열: 티커. 앱이 보유 종목의 티커를 알아서 넣어요(아래 '티커 자동 추가'). 직접 적어도 돼요.
+ *    직접 적을 때는 앱에 입력한 티커와 똑같이, 띄어쓰기 없이. 예) KRX:005930, KOSDAQ:247540, NASDAQ:QQQ, NYSEARCA:SCHD
  *    'NYSE: FCX'처럼 띄어쓰기가 들어가거나 소문자로 적으면 'NYSE:FCX'로 고쳐 적어요(onEdit).
  *  - B열·C열: 위 수식. A열에 티커를 적으면 자동으로 채워져요(onEdit). 안 채워지면 위 칸을 복사해 붙여넣으세요.
  *  - "CURRENCY:"로 시작하는 줄은 환율로 처리해요. CURRENCY:USDKRW → fx.USDKRW
@@ -23,9 +26,14 @@
  *    통화(C열)는 환율 줄에서는 쓰지 않으니 비워 둬요.
  *  - B열 수식을 직접 고쳐 두었다면 그 수식은 건드리지 않아요. (이 코드가 넣은 수식만 바꿔요)
  *
+ * ── 티커 자동 추가 ───────────────────────────────────────────
+ *  앱이 시세를 요청할 때 ?tickers=KRX:005930,NASDAQ:QQQ 처럼 보유 종목 티커를 붙여 보내면,
+ *  시트에 없는 티커만 A열 끝에 넣고 B·C열 수식을 채운 뒤 시세를 돌려줘요. (응답의 added: 새로 넣은 티커)
+ *  거래소:종목코드 모양이 아닌 글자는 넣지 않고, 한 번에 150개·시트 1000줄까지만 넣어요. 지우는 일은 하지 않아요.
+ *
  * ── 처음 한 번: setupSheet 실행 ──────────────────────────────────────
  *  편집기 위쪽 함수 목록에서 setupSheet를 고르고 [실행]을 누르면
- *  '시세' 탭, 제목 줄, 환율 줄, 예시 종목 두 개가 만들어져요. (이미 있는 내용은 지우지 않아요)
+ *  '시세' 탭, 제목 줄, 환율 줄이 만들어져요. 종목 줄은 앱이 알아서 넣어요. (이미 있는 내용은 지우지 않아요)
  *  예전 코드로 만든 시트에서 환율(B2)이 #N/A면, 이 코드로 바꾼 뒤 setupSheet를 한 번 더 실행하면 고쳐져요.
  *
  * ── 웹 앱으로 배포 ─────────────────────────────────────────────
@@ -42,24 +50,45 @@
  *      "KRX:005930": { "price": 61000, "currency": "KRW" },
  *      "NASDAQ:QQQ": { "price": 512.3, "currency": "USD" }
  *    },
- *    "errors": ["KRX:123456"]      ← 가격을 받지 못한 티커 (#N/A 등)
+ *    "errors": ["KRX:123456"],     ← 가격을 받지 못한 티커 (#N/A 등)
+ *    "added": ["NYSE:KO"],         ← 이번 요청에서 시트에 새로 넣은 티커 (가격은 잠시 뒤에 들어올 수 있어요)
+ *    "features": ["add-tickers"]   ← 이 코드가 할 수 있는 일 (앱이 코드 버전을 알아보는 데 써요)
  *  }
  */
 
 const SHEET_NAME = '시세';
 const HEADER_ROWS = 1;
 const CURRENCY_PREFIX = 'CURRENCY:';
+const HEADER = ['티커', '가격', '통화'];
+const FEATURES = ['add-tickers'];
+// 티커 자동 추가: 거래소:종목코드 모양만 (예: KRX:005930, KRX:0085P0, NYSE:BRK.B, CURRENCY:USDKRW)
+const ADD_TICKER_PATTERN = /^[A-Z][A-Z0-9]{0,14}:[A-Z0-9][A-Z0-9.\-]{0,19}$/;
+const MAX_ADD_TICKERS = 150;
+const MAX_QUOTE_ROWS = 1000;
+// 새로 넣은 종목은 구글 금융이 가격을 채울 시간을 조금 준 뒤 읽는다 (못 채운 가격은 앱이 잠시 뒤 다시 받는다)
+const ADD_WAIT_MS = 2500;
 
 function jsonOutput_(result) {
   return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
 }
 
 // 앱이 시세를 요청할 때 실행된다 (웹 앱 GET 요청). ?action=sync-info 는 기기 연동 상태(아래 '기기 연동')
+// ?tickers=… 가 있으면 시트에 없는 티커를 먼저 넣는다 (위 '티커 자동 추가')
 function doGet(e) {
   let result;
   try {
-    const action = e && e.parameter ? e.parameter.action : '';
-    result = action === 'sync-info' ? syncInfo_() : readQuotes_();
+    const params = (e && e.parameter) || {};
+    if (params.action === 'sync-info') {
+      result = syncInfo_();
+    } else {
+      const added = params.tickers ? addTickers_(params.tickers) : [];
+      if (added.length > 0) {
+        SpreadsheetApp.flush();
+        Utilities.sleep(ADD_WAIT_MS);
+      }
+      result = readQuotes_();
+      result.added = added;
+    }
   } catch (error) {
     result = { error: String((error && error.message) || error) };
   }
@@ -88,22 +117,67 @@ function onEdit(e) {
   for (let row = firstRow; row <= range.getLastRow(); row += 1) fillFormulas_(sheet, row);
 }
 
-// 처음 한 번 실행: '시세' 탭과 제목 줄, 환율 줄, 예시 종목을 만든다.
+// 처음 한 번 실행: '시세' 탭과 제목 줄, 환율 줄을 만든다. (종목 줄은 앱이 시세를 받을 때 알아서 넣는다)
 function setupSheet() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME, 0);
-  sheet.getRange(1, 1, 1, 3).setValues([['티커', '가격', '통화']]).setFontWeight('bold');
+  sheet.getRange(1, 1, 1, 3).setValues([HEADER]).setFontWeight('bold');
   sheet.setFrozenRows(HEADER_ROWS);
   if (sheet.getLastRow() <= HEADER_ROWS) {
-    sheet.getRange(HEADER_ROWS + 1, 1, 3, 1).setValues([['CURRENCY:USDKRW'], ['KRX:005930'], ['NASDAQ:QQQ']]);
+    sheet.getRange(HEADER_ROWS + 1, 1, 1, 1).setValues([['CURRENCY:USDKRW']]);
   }
   for (let row = HEADER_ROWS + 1; row <= sheet.getLastRow(); row += 1) fillFormulas_(sheet, row);
   sheet.autoResizeColumns(1, 3);
 }
 
+// 시세 탭: '시세', 없으면 첫 번째 탭 (기기 연동의 숨긴 탭 '앱 데이터'는 빼고)
 function getQuoteSheet_() {
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  return spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.getSheets()[0];
+  const named = spreadsheet.getSheetByName(SHEET_NAME);
+  if (named) return named;
+  const others = spreadsheet.getSheets().filter((sheet) => sheet.getName() !== SYNC_SHEET_NAME);
+  return others[0] || spreadsheet.insertSheet(SHEET_NAME, 0);
+}
+
+// 시세 탭 A열에 이미 있는 티커 (정리한 모양)
+function sheetTickers_(sheet) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow <= HEADER_ROWS) return [];
+  return sheet.getRange(HEADER_ROWS + 1, 1, lastRow - HEADER_ROWS, 1).getValues().map((row) => normalizeTicker_(row[0]));
+}
+
+// 티커 자동 추가: 앱이 보낸 티커(쉼표로 구분) 중 시트에 없는 것만 A열 끝에 넣고 B·C열 수식을 채운다.
+// 넣은 티커 목록을 돌려준다. 두 기기가 동시에 넣어도 겹치지 않게 잠근 뒤 한 번 더 확인한다.
+function addTickers_(raw) {
+  const wanted = [];
+  String(raw).split(',').forEach((value) => {
+    const ticker = normalizeTicker_(value);
+    if (wanted.length < MAX_ADD_TICKERS && ADD_TICKER_PATTERN.test(ticker) && wanted.indexOf(ticker) === -1) wanted.push(ticker);
+  });
+  if (wanted.length === 0) return [];
+  const sheet = getQuoteSheet_();
+  const missingFrom = (existing) => wanted.filter((ticker) => existing.indexOf(ticker) === -1);
+  if (missingFrom(sheetTickers_(sheet)).length === 0) return [];
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try {
+    if (sheet.getLastRow() < HEADER_ROWS) {
+      sheet.getRange(1, 1, 1, 3).setValues([HEADER]).setFontWeight('bold');
+      sheet.setFrozenRows(HEADER_ROWS);
+    }
+    const start = Math.max(sheet.getLastRow(), HEADER_ROWS) + 1;
+    const missing = missingFrom(sheetTickers_(sheet)).slice(0, Math.max(0, MAX_QUOTE_ROWS - start + 1));
+    if (missing.length === 0) return [];
+    sheet.getRange(start, 1, missing.length, 1).setValues(missing.map((ticker) => [ticker]));
+    sheet.getRange(start, 2, missing.length, 2).setFormulas(missing.map((ticker, index) => {
+      const row = start + index;
+      return [priceFormula_(ticker, row), ticker.indexOf(CURRENCY_PREFIX) === 0 ? '' : `=GOOGLEFINANCE(A${row}, "currency")`];
+    }));
+    return missing;
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function normalizeTicker_(value) {
@@ -142,7 +216,7 @@ function fillFormulas_(sheet, row) {
 
 function readQuotes_() {
   const sheet = getQuoteSheet_();
-  const result = { updatedAt: new Date().toISOString(), fx: {}, prices: {}, errors: [] };
+  const result = { updatedAt: new Date().toISOString(), fx: {}, prices: {}, errors: [], features: FEATURES };
   const lastRow = sheet.getLastRow();
   if (lastRow <= HEADER_ROWS) return result;
 

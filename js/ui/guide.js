@@ -2,7 +2,7 @@
 // 문서 속 <!-- app:code --> 자리에는 Code.gs 코드와 복사 버튼을 넣는다.
 
 import { parseMarkdown, safeUrl } from '../markdown.js';
-import { el, clear, showToast } from '../dom.js';
+import { el, clear, copyText, showToast } from '../dom.js';
 
 const GUIDE_PATH = './docs/SHEET_SETUP.md';
 const CODE_PATH = './apps-script/Code.gs';
@@ -11,29 +11,6 @@ async function fetchText(path) {
   const response = await fetch(path, { cache: 'no-cache' });
   if (!response.ok) throw new Error(`${path}: ${response.status}`);
   return response.text();
-}
-
-async function copyText(text) {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return true;
-    } catch {
-      // 아래의 예전 방식으로 다시 시도한다.
-    }
-  }
-  const area = el('textarea', { class: 'visually-hidden', readonly: true });
-  area.value = text;
-  document.body.append(area);
-  area.select();
-  let copied = false;
-  try {
-    copied = document.execCommand('copy');
-  } catch {
-    copied = false;
-  }
-  area.remove();
-  return copied;
 }
 
 function renderInline(nodes, base) {

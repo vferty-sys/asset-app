@@ -112,7 +112,7 @@ function lineAccounts(line) {
 const gapName = (name) => (name === '성장주' ? '성장주(주식)' : name);
 
 // 보유 종목이 없는 자산군: 살 금액, 예시 ETF('이걸로 사기'), 추가했지만 현재가가 없는 종목 안내
-function gapPanel(gap, { account, money, stockItems, onPick, onEditHolding }) {
+function gapPanel(gap, { account, money, stockItems, onPick, onEditHolding, autoPrice }) {
   const set = CLASS_EXAMPLES[gap.name];
   const where = account ? `${account} 계좌에` : '보유 종목에';
   const hasMoney = gap.amount > 0;
@@ -128,7 +128,9 @@ function gapPanel(gap, { account, money, stockItems, onPick, onEditHolding }) {
   if (gap.waiting?.length > 0) {
     for (const item of gap.waiting) {
       panel.append(el('div', { class: 'banner banner-warn gap-waiting' },
-        el('span', { text: `추가한 ${item.name}의 현재가를 몰라서 몇 주인지 계산하지 못했어요. 현재가를 적으면 바로 계산해 드려요. ` }),
+        el('span', { text: autoPrice
+          ? `추가한 ${item.name}의 가격을 시트에서 받는 중이에요. 몇 초 뒤에 몇 주인지 계산해 드려요. 계속 안 나오면 현재가를 직접 적어 주세요. `
+          : `추가한 ${item.name}의 현재가를 몰라서 몇 주인지 계산하지 못했어요. 현재가를 적으면 바로 계산해 드려요. ` }),
         el('button', { type: 'button', class: 'btn btn-small', text: '현재가 적기', onClick: () => onEditHolding(item.id) })));
     }
     return panel;
@@ -152,7 +154,7 @@ function gapPanel(gap, { account, money, stockItems, onPick, onEditHolding }) {
   return panel;
 }
 
-function groupCard(group, { method, money, band, showAnyway, onShowAnyway, stockItems, onPick, onEditHolding }) {
+function groupCard(group, { method, money, band, showAnyway, onShowAnyway, stockItems, onPick, onEditHolding, autoPrice = false }) {
   const title = group.account ? `${group.account} 계좌` : '전체 보유 종목';
   const summary = `지금 ${money(group.current)}${group.additional > 0 ? ` + 살 돈(예수금·추가 투자금) ${money(group.additional)}` : ''}`;
   const card = el('section', { class: 'card result-card' },
@@ -227,7 +229,7 @@ function groupCard(group, { method, money, band, showAnyway, onShowAnyway, stock
     card.append(el('div', { class: 'gap-section' },
       el('h3', { class: 'gap-heading', text: '살 종목 고르기' }),
       el('p', { class: 'muted small', text: '목표에는 있는데 보유 종목이 없는 자산군이에요. 예시에서 "이걸로 사기"를 누르면 보유 종목에 수량 0으로 추가하고, 몇 주 사면 되는지 다시 계산해 드려요.' }),
-      gaps.map((gap) => gapPanel(gap, { account: group.account, money, stockItems, onPick, onEditHolding }))));
+      gaps.map((gap) => gapPanel(gap, { account: group.account, money, stockItems, onPick, onEditHolding, autoPrice }))));
   }
 
   const leftover = el('p', { class: 'leftover' }, `남는 돈: ${money(group.leftover)}`);
@@ -568,6 +570,8 @@ export function render(root, { getState, updateState, subscribe }) {
             showResults();
           },
           stockItems,
+          // 최신 시트 코드면 새로 추가한 종목의 가격을 시트에서 알아서 받아온다
+          autoPrice: market.mode === 'sheet' && market.canAddTickers,
           onPick: pickExample,
           onEditHolding: (id) => {
             const holding = getState().holdings.find((item) => item.id === id);
@@ -587,11 +591,10 @@ export function render(root, { getState, updateState, subscribe }) {
       const target = account ?? defaultAccount(portfolio.rows, example.overseas);
       const quote = market.prices?.[example.ticker];
       const hasSheetPrice = market.mode === 'sheet' && quote?.price > 0;
-      const priceNote = hasSheetPrice
-        ? ''
-        : market.mode === 'sheet'
-          ? ` 구글 시트 A열에 ${example.ticker}를 추가하면 현재가가 들어와요. 지금 바로 계산하려면 아래 "현재가"에 증권사 앱에서 본 가격을 적어 주세요.`
-          : ' 아래 "현재가"에 증권사 앱에서 본 지금 가격을 적어 주세요. 그래야 몇 주인지 계산할 수 있어요.';
+      let priceNote = ' 아래 "현재가"에 증권사 앱에서 본 지금 가격을 적어 주세요. 그래야 몇 주인지 계산할 수 있어요.';
+      if (hasSheetPrice) priceNote = '';
+      else if (market.mode === 'sheet' && market.canAddTickers) priceNote = ' 저장하면 앱이 시트에 이 티커를 넣고 몇 초 뒤 현재가를 받아와요.';
+      else if (market.mode === 'sheet') priceNote = ` 구글 시트 A열에 ${example.ticker}를 추가하면 현재가가 들어와요. 지금 바로 계산하려면 아래 "현재가"에 증권사 앱에서 본 가격을 적어 주세요.`;
       openHoldingForm({
         prefill: {
           ticker: example.ticker,

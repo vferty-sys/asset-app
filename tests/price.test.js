@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { STORAGE_KEYS } from '../js/constants.js';
 import { createMemoryBackend } from '../js/storage.js';
 import {
-  PriceError, buildMarket, fetchSheetPrices, findPriceIssues, loadPriceCache, parseSheetResponse, savePriceCache,
+  FX_TICKER, PriceError, SHEET_TICKER_LIMIT, buildMarket, fetchSheetPrices, findPriceIssues, loadPriceCache, parseSheetResponse,
+  savePriceCache, sheetRequestUrl, sheetTickers, unknownSheetTickers,
 } from '../js/price.js';
 
 const SHEET_URL = 'https://script.google.com/macros/s/AKfyTEST/exec';
@@ -30,7 +31,51 @@ test('요청서 4-2 형식의 응답을 읽는다', () => {
       'NASDAQ:QQQ': { price: 512.3, currency: 'USD' },
     },
     errors: ['KRX:123456'],
+    added: [],
+    canAddTickers: false,
   });
+});
+
+test('최신 시트 코드: 새로 넣은 티커(added)와 티커 자동 추가 가능 여부(features)를 읽고, 캐시에서도 유지한다', () => {
+  const data = parseSheetResponse({ ...SAMPLE, added: [' nyse:ko ', 'NYSE:KO', ''], features: ['add-tickers'] });
+  assert.deepEqual(data.added, ['NYSE:KO']);
+  assert.equal(data.canAddTickers, true);
+  // 저장해 둔 캐시(이미 정리한 모양)를 다시 읽어도 그대로
+  assert.equal(parseSheetResponse(JSON.parse(JSON.stringify(data))).canAddTickers, true);
+  assert.equal(parseSheetResponse({ ...SAMPLE, features: ['other'] }).canAddTickers, false);
+});
+
+test('시트에 보낼 티커: 보유 종목 티커(중복 없이, 정리한 모양) + 달러 종목이 있으면 환율 줄, 최대 150개', () => {
+  const holdings = [
+    { ticker: 'KRX:005930', currency: 'KRW' },
+    { ticker: 'krx:005930', currency: 'KRW' },
+    { ticker: 'NYSEARCA:SCHD', currency: 'USD' },
+  ];
+  assert.deepEqual(sheetTickers(holdings), ['KRX:005930', 'NYSEARCA:SCHD', FX_TICKER]);
+  assert.deepEqual(sheetTickers([{ ticker: 'KRX:005930', currency: 'KRW' }]), ['KRX:005930']);
+  assert.deepEqual(sheetTickers([]), []);
+  const many = Array.from({ length: 200 }, (_, i) => ({ ticker: `KRX:${100000 + i}`, currency: 'KRW' }));
+  assert.equal(sheetTickers(many).length, SHEET_TICKER_LIMIT);
+});
+
+test('시세 요청 주소: 티커를 tickers 파라미터로 붙이고, 없으면 주소 그대로', () => {
+  const base = 'https://script.google.com/macros/s/abc/exec';
+  assert.equal(sheetRequestUrl(base, []), base);
+  const url = new URL(sheetRequestUrl(base, ['KRX:005930', 'NYSE:BRK.B', 'CURRENCY:USDKRW']));
+  assert.equal(url.origin + url.pathname, base);
+  assert.equal(url.searchParams.get('tickers'), 'KRX:005930,NYSE:BRK.B,CURRENCY:USDKRW');
+});
+
+test('시트가 아직 모르는 티커: 가격도 오류도 없는 티커만 (환율 줄은 환율을 받았으면 아는 것)', () => {
+  const holdings = [{ ticker: 'KRX:005930', currency: 'KRW' }, { ticker: 'KRX:123456', currency: 'KRW' }, { ticker: 'NYSE:KO', currency: 'USD' }];
+  const settings = { sheetUrl: 'https://script.google.com/macros/s/abc/exec', manualFxUsdKrw: null };
+  const cache = (data) => ({ sheetUrl: settings.sheetUrl, data: parseSheetResponse(data) });
+  const withFx = buildMarket({ cache: cache({ ...SAMPLE, prices: { 'KRX:005930': { price: 1, currency: 'KRW' } }, errors: ['KRX:123456'] }), settings });
+  assert.deepEqual(unknownSheetTickers(holdings, withFx), ['NYSE:KO']);
+  const noFx = buildMarket({ cache: cache({ prices: {}, fx: {} }), settings });
+  assert.deepEqual(unknownSheetTickers(holdings, noFx), ['KRX:005930', 'KRX:123456', 'NYSE:KO', FX_TICKER]);
+  assert.deepEqual(unknownSheetTickers(holdings, buildMarket({ cache: null, settings })), [], '시세를 아직 못 받았으면 모름');
+  assert.deepEqual(unknownSheetTickers(holdings, buildMarket({ cache: null, settings: { sheetUrl: '', manualFxUsdKrw: null } })), []);
 });
 
 test('티커는 앱과 같은 형식으로 정리하고, 가격이 이상한 티커는 errors로 옮긴다', () => {

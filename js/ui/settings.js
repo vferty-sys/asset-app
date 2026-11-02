@@ -3,6 +3,7 @@
 import { SETTINGS_SCHEMA } from '../constants.js';
 import { coerceValue } from '../validate.js';
 import { testConnection } from '../market.js';
+import { FX_TICKER, sheetTickers } from '../price.js';
 import { el, helpTip, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
 import { createField, createToggleField, selectInput, textInput } from './form.js';
@@ -10,8 +11,6 @@ import { dataSection, downloadBackup, installSection } from './data-tools.js';
 import { syncSection } from './sync-ui.js';
 
 const MONTH_OPTIONS = Array.from({ length: 12 }, (_, i) => [i + 1, `${i + 1}월`]);
-// 시트에서 달러 환율을 받는 줄 (apps-script/Code.gs가 CURRENCY:로 시작하는 줄을 환율로 읽는다)
-const FX_TICKER = 'CURRENCY:USDKRW';
 
 function retirementAgeHint({ birthYear, birthMonth, retirementDate }) {
   if (!birthYear || !retirementDate) return '출생연도도 입력하면 퇴직할 때 나이를 알려드려요.';
@@ -140,15 +139,22 @@ const SECTIONS = [
 ];
 
 // 연결 테스트 결과 문구. 환율이 없거나, 가격을 못 받았거나, 시트에 없는 종목이 있으면 경고로 보여준다.
-function connectionReport(data, holdings) {
+export function connectionReport(data, holdings) {
   const count = Object.keys(data.prices).length;
   const lines = [`연결됐어요! 시세 ${count}개를 받았어요.`];
   let tone = 'ok';
+  // 이번에 시트 코드가 새로 넣은 티커는 구글 금융이 가격을 채우는 중이라 오류로 보지 않는다
+  const added = new Set(data.added ?? []);
+  if (added.size > 0) {
+    lines.push(`시트에 보유 종목 티커 ${added.size}개를 새로 넣었어요. 가격은 몇 초 뒤에 들어와요 (앱이 알아서 다시 받아요).`);
+  }
   // 환율 줄이 시트에 있지만 값이 #N/A인 경우와, 줄이 아예 없는 경우를 나눠 안내한다
   const fxRowFailed = data.errors.includes(FX_TICKER);
-  const priceErrors = data.errors.filter((ticker) => ticker !== FX_TICKER);
+  const priceErrors = data.errors.filter((ticker) => ticker !== FX_TICKER && !added.has(ticker));
   if (data.fx.USDKRW) {
     lines.push(`달러 환율: ${formatNumber(data.fx.USDKRW, { maximumFractionDigits: 2 })}원`);
+  } else if (added.has(FX_TICKER)) {
+    lines.push('달러 환율 줄도 넣었어요. 환율도 몇 초 뒤에 들어와요.');
   } else if (fxRowFailed) {
     tone = 'warn';
     lines.push(`달러 환율 줄(${FX_TICKER})은 시트에 있지만 가격 칸이 #N/A라서 환율을 받지 못했어요. `
@@ -163,10 +169,15 @@ function connectionReport(data, holdings) {
     lines.push(`가격을 받지 못한 티커 ${priceErrors.length}개: ${priceErrors.slice(0, 5).join(', ')} — 티커 형식(띄어쓰기 없이 NYSE:FCX처럼)을 확인해 주세요.`);
   }
   const missing = [...new Set(holdings.map((h) => h.ticker))]
-    .filter((ticker) => !Object.hasOwn(data.prices, ticker) && !data.errors.includes(ticker));
+    .filter((ticker) => !Object.hasOwn(data.prices, ticker) && !data.errors.includes(ticker) && !added.has(ticker));
   if (missing.length > 0) {
     tone = 'warn';
-    lines.push(`시트에 없는 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 시트 A열에 추가해 주세요.`);
+    lines.push(data.canAddTickers
+      ? `시트에 넣지 못한 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 거래소:종목코드 모양(KRX:005930처럼)인지 확인해 주세요.`
+      : `시트에 없는 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 시트 A열에 추가해 주세요.`);
+  }
+  if (!data.canAddTickers) {
+    lines.push('시트 코드가 예전 버전이에요. 연결 가이드의 "코드 업데이트"대로 최신 코드로 바꾸면, 보유 종목 티커를 앱이 알아서 시트에 넣어요.');
   }
   return { tone, lines };
 }
@@ -240,7 +251,7 @@ export function render(root, { getState, updateState, navigate, subscribe, sync 
       testButton.disabled = true;
       show('info', ['시트에 연결하는 중…']);
       try {
-        const data = await testConnection(check.value, getState().settings.sheetUrl);
+        const data = await testConnection(check.value, getState().settings.sheetUrl, { tickers: sheetTickers(getState().holdings) });
         const report = connectionReport(data, getState().holdings);
         show(report.tone, report.lines);
       } catch (error) {

@@ -2,6 +2,7 @@
 // 시트 주소가 없으면 직접 입력 모드라고 알리고 연결 가이드로 안내한다.
 
 import { getMarket, getPriceStatus, refreshPrices, subscribeMarket } from '../market.js';
+import { sheetTickers } from '../price.js';
 import { el, clear, svg, showToast } from '../dom.js';
 import { formatQuoteTime } from '../format.js';
 
@@ -36,6 +37,10 @@ export function mountPriceStatus(container, { getState, subscribe }) {
     if (loading) {
       long = '시세 받는 중…';
       short = '받는 중…';
+    } else if (status.pending > 0) {
+      // 시트에 새로 넣은 종목의 가격을 구글 금융이 채우는 중 (앱이 잠시 뒤 다시 받는다)
+      long = `새 종목 ${status.pending}개 가격 받는 중…`;
+      short = '받는 중…';
     }
     const label = failed
       ? `새 시세를 받지 못했어요${time ? `(마지막 시세 ${time})` : ''}. ${status.message} 누르면 다시 시도해요.`
@@ -43,14 +48,14 @@ export function mountPriceStatus(container, { getState, subscribe }) {
 
     const button = el('button', {
       type: 'button',
-      class: `status-chip${failed ? ' is-error' : ''}${loading ? ' is-loading' : ''}`,
+      class: `status-chip${failed ? ' is-error' : ''}${loading || status.pending > 0 ? ' is-loading' : ''}`,
       title: label,
       'aria-label': label,
       disabled: loading,
     }, refreshIcon(), el('span', { class: 'chip-long', text: long }), el('span', { class: 'chip-short', text: short }));
     button.addEventListener('click', async () => {
-      const result = await refreshPrices(getState().settings.sheetUrl);
-      if (result.ok) showToast('시세를 새로 받아왔어요');
+      const result = await refreshPrices(getState().settings.sheetUrl, { tickers: sheetTickers(getState().holdings) });
+      if (result.ok) showToast(result.added?.length > 0 ? `시트에 새 종목 ${result.added.length}개를 넣었어요. 가격은 몇 초 뒤에 들어와요.` : '시세를 새로 받아왔어요');
       else if (result.error) showToast(result.error.message, 'danger', 5000);
     });
     container.append(button);
