@@ -101,10 +101,64 @@ test('자산군 모드: 자산군 목표를 그 안의 종목들에 지금 비�
   near(categories.성장주[1], 0.5);
 });
 
-test('자산군 모드: 목표가 있는데 살 종목이 없는 자산군은 알려주고, 나머지 비율로 맞춘다', () => {
+const gapOf = (result, name, group = 0) => result.groups[group].missing.find((gap) => gap.name === name);
+
+test('자산군 모드: 종목이 없는 자산군도 목표에 넣어 사야 할 금액을 계산하고, 그만큼 다른 자산군을 판다', () => {
   const result = run([holding('A'), holding('B')], { targets: classTargets({ 성장주: 80, 채권: 20 }) });
-  assert.deepEqual(result.groups[0].missing, [{ name: '채권', target: 0.2 }]);
-  assert.ok(result.groups[0].lines.every((line) => line.action === 'hold'));
+  const group = result.groups[0];
+  const gap = gapOf(result, '채권');
+  near(gap.target, 0.2);
+  near(gap.targetValue, 400_000);
+  near(gap.amount, 400_000);
+  near(gap.afterWeight, 0.2);
+  assert.deepEqual(gap.waiting, []);
+  // 성장주 200만원 → 160만원: A·B 20주씩 판다
+  assert.deepEqual(trade(lineOf(result, 'A')), ['sell', 20]);
+  assert.deepEqual(trade(lineOf(result, 'B')), ['sell', 20]);
+  near(group.leftover, 0);
+  // 채권 지금 0% vs 목표 20% → 허용 범위를 벗어남
+  const categories = Object.fromEntries(group.categories.map((item) => [item.name, [item.current, item.target]]));
+  assert.deepEqual(categories.채권, [0, 0.2]);
+  near(group.maxDrift, 0.2);
+  assert.equal(group.withinBand, false);
+});
+
+test('자산군 모드·매수만: 살 돈을 종목이 없는 자산군에도 모자란 만큼 나눈다', () => {
+  const result = run([holding('A')], { targets: classTargets({ 성장주: 50, 채권: 50 }), method: 'buyOnly', additional: 1_000_000 });
+  // 총 200만원 → 성장주 100만원(이미 있음), 채권 100만원 모자람 → 살 돈 모두 채권으로
+  assert.deepEqual(trade(lineOf(result, 'A')), ['hold', 0]);
+  near(gapOf(result, '채권').amount, 1_000_000);
+  near(result.groups[0].leftover, 0);
+
+  const split = run([holding('A')], { targets: classTargets({ 성장주: 60, 채권: 40 }), method: 'buyOnly', additional: 1_000_000 });
+  // 총 200만원 → 성장주 120만원(20만원 모자람), 채권 80만원 모자람 → 2:8로 나눈다
+  assert.deepEqual(trade(lineOf(split, 'A')), ['buy', 20]);
+  near(gapOf(split, '채권').amount, 800_000);
+  assert.ok(split.groups[0].lines.every((line) => line.action !== 'sell'));
+});
+
+test('자산군 모드: 판 돈이 내림으로 줄면 종목이 없는 자산군의 살 금액을 줄인다', () => {
+  const result = run([holding('A', { price: 300_000, quantity: 5 })], { targets: classTargets({ 성장주: 50, 현금성: 50 }) });
+  // 2.5주를 팔아야 하지만 2주만 → 60만원만 생긴다
+  assert.deepEqual(trade(lineOf(result, 'A')), ['sell', 2]);
+  near(gapOf(result, '현금성').amount, 600_000);
+  near(result.groups[0].leftover, 0);
+});
+
+test('자산군 모드: 목표 자산군에 종목이 하나도 없으면 모두 팔아 그 자산군을 산다', () => {
+  const result = run([holding('A')], { targets: classTargets({ 채권: 100 }) });
+  assert.deepEqual(trade(lineOf(result, 'A')), ['sell', 100]);
+  near(gapOf(result, '채권').amount, 1_000_000);
+  assert.equal(result.groups[0].noTargets, false);
+});
+
+test('자산군 모드: 살 종목으로 추가했지만 현재가가 없으면 계산에서 빼고 그 자산군 자리에 알려준다', () => {
+  const result = run([holding('A'), holding('BOND', { quantity: 0, price: 0, assetClass: '채권' })], { targets: classTargets({ 성장주: 70, 채권: 30 }) });
+  const [item] = result.excluded;
+  assert.equal(item.ticker, 'KRX:BOND');
+  assert.equal(item.noPrice, true);
+  assert.match(item.reason, /현재가를 몰라서/);
+  assert.deepEqual(gapOf(result, '채권').waiting.map((entry) => entry.id), ['BOND']);
 });
 
 test('자산군 모드: 수량 0인 종목(새로 살 종목)만 있는 자산군은 똑같이 나눠 산다', () => {
@@ -177,7 +231,7 @@ test('전체 계산: 같은 종목을 여러 계좌에 나눠 가지면 하나�
   assert.equal(result.groups[0].lines.length, 2);
 });
 
-test('계좌별: 같은 목표를 계좌마다 따로, 계좌에 없는 자산군은 빼고 맞춘다', () => {
+test('계좌별: 같은 목표를 계좌마다 따로, 계좌에 없는 자산군은 그 계좌에서 살 금액으로', () => {
   const holdings = [
     holding('A', { account: '일반' }),
     holding('B', { account: 'ISA', quantity: 50 }),
@@ -186,8 +240,10 @@ test('계좌별: 같은 목표를 계좌마다 따로, 계좌에 없는 자산�
   const result = run(holdings, { targets: classTargets({ 성장주: 50, 채권: 50 }), byAccount: true });
   assert.deepEqual(result.groups.map((group) => group.account), ['일반', 'ISA']);
   const [general, isa] = result.groups;
-  assert.deepEqual(general.missing, [{ name: '채권', target: 0.5 }]);
-  assert.ok(general.lines.every((line) => line.action === 'hold'));
+  assert.deepEqual(general.missing.map((gap) => gap.name), ['채권']);
+  near(general.missing[0].amount, 500_000);
+  assert.deepEqual(trade(lineOf(result, 'A', 0)), ['sell', 50]);
+  assert.deepEqual(isa.missing, []);
   assert.equal(isa.withinBand, true);
 
   const withMoney = run(holdings, {

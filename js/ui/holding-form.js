@@ -292,9 +292,25 @@ function createCountryEditor({ rows, preset, type, onChange }) {
   };
 }
 
-export function openHoldingForm({ holding = null, getState, updateState }) {
+// prefill: 리밸런싱의 '이걸로 사기'처럼 살 종목을 미리 채워 여는 경우
+//  { ticker, name, currency, assetClass, account, note } — 수량 0으로 추가하고, 종목 목록을 받으면 국가·섹터도 채운다.
+function prefillInput(prefill) {
+  return {
+    ...emptyInput(),
+    name: prefill.name ?? '',
+    ticker: prefill.ticker ?? '',
+    type: prefill.type ?? 'etf',
+    currency: prefill.currency ?? 'KRW',
+    quantity: '0',
+    avgPrice: '0',
+    account: prefill.account ?? '일반',
+    assetClass: prefill.assetClass ?? '',
+  };
+}
+
+export function openHoldingForm({ holding = null, prefill = null, getState, updateState }) {
   const isEdit = Boolean(holding);
-  const input = isEdit ? holdingToInput(holding) : emptyInput();
+  const input = isEdit ? holdingToInput(holding) : prefill ? prefillInput(prefill) : emptyInput();
   let currencyTouched = isEdit;
   let countryTouched = isEdit;
   // 저장된 ETF의 분산 정도는 사용자가 정한 값으로 본다 (이름을 바꿔도 다시 짐작하지 않음)
@@ -432,6 +448,14 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
     .then((items) => {
       stockItems = items;
       picker.refresh();
+      const listed = prefill ? findByTicker(items, prefill.ticker) : null;
+      if (listed) {
+        applyStock(listed);
+        // 리밸런싱에서 고른 자산군·계좌를 그대로 쓴다
+        if (prefill.assetClass) assetClassField.control.value = prefill.assetClass;
+        if (prefill.account) accountField.control.value = prefill.account;
+        refreshSpread();
+      }
     })
     .catch(() => nameField.setHint('종목 목록을 불러오지 못했어요. 티커와 나머지 칸을 직접 입력해 주세요.'));
   // 종목명 없이 티커만 적었으면 목록에서 찾아 채운다
@@ -460,6 +484,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
 
   const formId = uid('holding-form');
   const form = el('form', { class: 'form', id: formId, novalidate: true },
+    prefill?.note ? el('p', { class: 'banner banner-info prefill-note', text: prefill.note }) : null,
     nameField.element,
     tickerField.element,
     el('div', { class: 'form-pair' }, typeField.element, currencyField.element),
@@ -476,7 +501,7 @@ export function openHoldingForm({ holding = null, getState, updateState }) {
   const saveButton = el('button', { type: 'submit', form: formId, class: 'btn btn-primary', text: isEdit ? '저장' : '추가' });
 
   const { close } = openModal({
-    title: isEdit ? '종목 수정' : '종목 추가',
+    title: isEdit ? '종목 수정' : prefill ? '살 종목 추가' : '종목 추가',
     body: form,
     footer: [deleteButton, el('span', { class: 'spacer' }), cancelButton, saveButton],
   });

@@ -794,6 +794,84 @@
   }
 }
 
+/* 보유 종목이 없는 자산군: 살 금액만 있는 줄과 예시 ETF */
+.result-table .is-gap .cell-name,
+.result-item.is-gap .cell-name {
+  color: var(--primary);
+}
+
+.gap-section {
+  display: grid;
+  gap: 10px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.gap-heading {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.gap-section > .muted {
+  margin: 0;
+}
+
+.gap-panel {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.gap-panel p {
+  margin: 0;
+}
+
+.gap-panel-title strong {
+  font-size: 1rem;
+}
+
+.gap-examples {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.gap-example {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.gap-example-name {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.gap-example .btn {
+  flex-shrink: 0;
+}
+
+.gap-waiting {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.prefill-note {
+  margin: 0;
+}
+
 .leftover {
   padding-top: 12px;
   border-top: 1px solid var(--border);
