@@ -2,7 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  APPROX_SECTOR_MIXES, classifyEtf, guessCountry, sectorFromGics, sectorFromKrIndustry, stockAssetClass,
+  APPROX_SECTOR_MIXES, classifyEtf, cleanUsCompanyName, countryFromNasdaq, guessCountry, guessSectorFromName, sectorFromGics,
+  sectorFromKrIndustry, sectorFromNasdaq, stockAssetClass,
 } from '../js/classify.js';
 import { GLOBAL_COUNTRY, presetMix } from '../js/country-weights.js';
 import { SECTOR_OPTIONS } from '../js/constants.js';
@@ -168,4 +169,58 @@ test('국내 시장지수 분류(broadIndex): 이름에 코스피가 없어도 �
   assert.equal(coveredCall.spread, 'market');
   // 테마 이름이 있으면 그 업종
   assert.deepEqual(classifyEtf('TIGER 반도체TOP10레버리지', { market: '국내', broadIndex: true }).sectorMix, { 기술: 100 });
+});
+
+test('미국 상장 전체 종목: 증권 이름에서 주식 종류 설명을 뗀다', () => {
+  assert.equal(cleanUsCompanyName('Abercrombie & Fitch Company Common Stock'), 'Abercrombie & Fitch Company');
+  assert.equal(cleanUsCompanyName('Petroleo Brasileiro S.A. Petrobras ADS'), 'Petroleo Brasileiro S.A. Petrobras');
+  assert.equal(cleanUsCompanyName('Grab Holdings Limited Class A Ordinary Shares'), 'Grab Holdings Limited Class A');
+  assert.equal(cleanUsCompanyName('AAON, Inc. - Common Stock'), 'AAON, Inc.');
+  assert.equal(cleanUsCompanyName('Sea Limited American Depositary Shares each representing one Class A Ordinary Share'), 'Sea Limited');
+  assert.equal(cleanUsCompanyName('ADS-TEC Energy PLC Ordinary Shares'), 'ADS-TEC Energy PLC', '이름 앞의 ADS는 그대로');
+  assert.equal(cleanUsCompanyName('Taiwan Semiconductor Manufacturing Company Ltd.'), 'Taiwan Semiconductor Manufacturing Company Ltd.');
+  assert.equal(cleanUsCompanyName('  Alcoa Corporation Common Stock '), 'Alcoa Corporation');
+});
+
+test('미국 상장 전체 종목: 업종을 먼저 보고(섹터가 엉뚱한 경우), 없으면 섹터, 둘 다 없으면 null', () => {
+  assert.equal(sectorFromNasdaq('Industrials', 'Biotechnology: Laboratory Analytical Instruments'), '헬스케어');
+  assert.equal(sectorFromNasdaq('Energy', 'Oil & Gas Production'), '에너지');
+  assert.equal(sectorFromNasdaq('Real Estate', 'Real Estate Investment Trusts'), '부동산');
+  assert.equal(sectorFromNasdaq('Utilities', 'Oil/Gas Transmission'), '에너지');
+  assert.equal(sectorFromNasdaq('Consumer Discretionary', 'Clothing/Shoe/Accessory Stores'), '소비재');
+  assert.equal(sectorFromNasdaq('Technology', 'Radio And Television Broadcasting And Communications Equipment'), '기술');
+  assert.equal(sectorFromNasdaq('Finance', 'Major Banks'), '금융');
+  assert.equal(sectorFromNasdaq('Health Care', 'Industrial Specialties'), '헬스케어', '업종 규칙이 없으면 섹터');
+  assert.equal(sectorFromNasdaq('Telecommunications', ''), '통신');
+  assert.equal(sectorFromNasdaq('', ''), null);
+  for (const value of ['기술', '헬스케어', '에너지', '부동산', '소비재', '금융']) assert.ok(SECTOR_OPTIONS.includes(value));
+});
+
+test('미국 상장 전체 종목: 나라 → 앱 국가 (유럽·신흥국 묶음, 조세 회피처는 기타로 짐작)', () => {
+  assert.deepEqual(countryFromNasdaq('Brazil'), { country: '브라질', certain: true });
+  assert.deepEqual(countryFromNasdaq('United States'), { country: '미국', certain: true });
+  assert.deepEqual(countryFromNasdaq('Hong Kong'), { country: '중국', certain: true });
+  assert.deepEqual(countryFromNasdaq('Netherlands'), { country: '유럽', certain: true });
+  assert.deepEqual(countryFromNasdaq('Mexico'), { country: '신흥국', certain: true });
+  assert.deepEqual(countryFromNasdaq('Israel'), { country: '기타', certain: true });
+  assert.deepEqual(countryFromNasdaq('Cayman Islands'), { country: '기타', certain: false });
+  assert.equal(countryFromNasdaq(''), null);
+});
+
+test('회사 이름으로 섹터 짐작 (자료가 없을 때·목록에 없는 종목)', () => {
+  assert.equal(guessSectorFromName('Petroleo Brasileiro S.A. Petrobras'), '에너지');
+  assert.equal(guessSectorFromName('American Savings Bank N.A.'), '금융');
+  assert.equal(guessSectorFromName('Allied Gold Corporation'), '소재');
+  assert.equal(guessSectorFromName('Bio-Rad Laboratories'), '헬스케어');
+  assert.equal(guessSectorFromName('Acme Realty Trust'), '부동산');
+  assert.equal(guessSectorFromName('Quantum Computing Inc'), '기술');
+  assert.equal(guessSectorFromName('한빛바이오'), '헬스케어');
+  assert.equal(guessSectorFromName('Embotelladora Andina S.A.'), null);
+  assert.equal(guessSectorFromName(''), null);
+});
+
+test('개별 주식 자산군: 나스닥 업종 이름의 리츠·은행·보험도 알아본다', () => {
+  assert.equal(stockAssetClass({ name: 'Acme', detail: 'Real Estate Investment Trusts' }), '기타');
+  assert.equal(stockAssetClass({ name: 'Acme', detail: 'Savings Institutions' }), '배당주');
+  assert.equal(stockAssetClass({ name: 'Acme', detail: 'Property-Casualty Insurers' }), '배당주');
 });

@@ -49,6 +49,9 @@ test('종목 목록: 모든 종목이 앱에서 쓸 수 있는 값이고 티커�
     if (item.al) assert.ok(Array.isArray(item.al) && item.al.every((alias) => typeof alias === 'string' && alias), where);
     if (item.sz !== undefined) assert.ok(Number.isInteger(item.sz) && item.sz > 0 && item.sz < 10, `시가총액 자릿수: ${where}`);
     if (item.cp !== undefined) assert.ok(item.k === 'e' && COUNTRY_PRESETS.includes(item.cp), `국가 비중표 항목: ${where}`);
+    // 짐작한 값 표시: 국가(gc)·섹터(gs)는 1일 때만 적는다
+    if (item.gc !== undefined) assert.equal(item.gc, 1, where);
+    if (item.gs !== undefined) assert.equal(item.gs, 1, where);
   }
 });
 
@@ -71,5 +74,11 @@ test('종목 목록: 국내·미국 대표 종목이 들어 있고 분류가 맞
   expect('NYSEARCA:VT', { cp: 'MSCI ACWI' });
   expect('NYSE:TSM', { co: '대만' });
   expect('NASDAQ:AAPL', { co: '미국', se: '기술', g: 'us' });
+  // S&P500 밖의 미국 상장 주식도 (나스닥 자료의 나라·업종) + 많이 사는 종목은 한글 이름
+  expect('NYSE:PBR', { co: '브라질', se: '에너지', k: 's', c: 'USD', g: 'us' });
+  expect('NYSE:ANF', { co: '미국', se: '소비재', g: 'us' });
+  assert.ok(byTicker.get('NYSE:PBR').al.includes('페트로브라스'));
+  assert.ok(byTicker.get('NYSE:ANF').al.includes('애버크롬비'));
+  assert.ok(data.counts.us > 4000, `미국 주식 개수 ${data.counts.us}`);
   assert.ok(data.counts.kr > 2000 && data.counts['kr-etf'] > 600, `국내 개수 ${data.counts.kr}, ${data.counts['kr-etf']}`);
 });
