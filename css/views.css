@@ -23,6 +23,69 @@
   letter-spacing: -0.02em;
 }
 
+.hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hero-hide,
+.trend-masked .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 가려 둔 총자산: 누르면 금액이 보인다 */
+.hero-reveal {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hero-reveal:hover {
+  border-color: var(--primary);
+}
+
+.hero-mask {
+  font-size: clamp(1.75rem, 8vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.hero-reveal-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.trend-masked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.trend-masked p {
+  margin: 0;
+}
+
 /* 투자자산 : 기타 금융자산 — 8px 가는 막대, 글자 없이 옆 목록이 금액을 알려준다 */
 .split-bar {
   display: flex;
@@ -1529,6 +1592,377 @@
   .holding-cards {
     display: none;
   }
+}
+
+/* 히트맵 / 목록 고르기 (좁은 화면에서는 버튼 아래 한 줄) */
+.holdings-toolbar {
+  align-items: center;
+}
+
+.view-toggle {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .holdings-toolbar .spacer {
+    display: none;
+  }
+
+  .view-toggle {
+    flex-basis: 100%;
+  }
+}
+
+/* ── 보유 종목 히트맵: 미국 주식 지도처럼 어두운 판 (밝은 테마에서도 어둡게) ── */
+.heatmap-panel {
+  --heat-bg: #15171d;
+  --heat-line: #2a2e38;
+  --heat-text: #eceff4;
+  --heat-muted: #8e96a5;
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgb(255 255 255 / 0.05);
+  border-radius: var(--radius);
+  background: var(--heat-bg);
+  color: var(--heat-text);
+  box-shadow: 0 1px 2px rgb(10 14 22 / 0.12), 0 10px 28px rgb(10 14 22 / 0.18);
+}
+
+.heat-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.heat-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* 묶는 방법: 판에 맞춘 어두운 작은 버튼 */
+.heat-groupby {
+  flex: 0 0 auto;
+  grid-auto-columns: auto;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: #22252e;
+}
+
+.heat-groupby .segmented-option span {
+  min-height: 28px;
+  padding: 0 9px;
+  border-radius: 7px;
+  color: var(--heat-muted);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.heat-groupby .segmented-option input:checked + span {
+  background: #3a3f4c;
+  color: #fff;
+  box-shadow: none;
+}
+
+.heatmap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 5;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--heat-bg);
+}
+
+@media (min-width: 768px) {
+  .heatmap {
+    aspect-ratio: 2 / 1;
+  }
+}
+
+.heat-tiles {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heat-tiles li {
+  position: absolute;
+}
+
+.heat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.1em;
+  width: 100%;
+  height: 100%;
+  padding: 2px 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 2px;
+  color: #fff;
+  font: inherit;
+  text-align: center;
+  text-shadow: 0 1px 1px rgb(0 0 0 / 0.28);
+  cursor: pointer;
+  transition: filter 0.12s ease, box-shadow 0.12s ease;
+}
+
+.heat-tile:hover {
+  filter: brightness(1.12) saturate(1.05);
+  box-shadow: inset 0 0 0 2px rgb(255 255 255 / 0.9);
+}
+
+.heat-tile:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 3px #fff;
+}
+
+.heat-name {
+  max-width: 100%;
+  overflow: hidden;
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-name.is-two {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  word-break: keep-all;
+}
+
+.heat-return {
+  font-weight: 700;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.heat-value {
+  margin-top: 0.2em;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0.72;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 묶음 머리 이름표 (미국 지도의 섹터 이름처럼) */
+.heat-group-label {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  padding: 0 4px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.heat-group-name {
+  overflow: hidden;
+  color: #c9ced8;
+  font-weight: 800;
+  text-overflow: ellipsis;
+}
+
+.heat-group-weight {
+  color: var(--heat-muted);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.heat-note {
+  margin: 0;
+  color: var(--heat-muted);
+  font-size: 0.75rem;
+}
+
+/* 색 범례: 미국 지도처럼 색 칸 안에 숫자 */
+.heat-legend {
+  display: flex;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heat-legend li {
+  min-width: 40px;
+  padding: 3px 4px;
+  border-radius: 2px;
+  color: #fff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* PC에서 칸에 마우스를 올리면 뜨는 정보 창 */
+.heat-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 5;
+  display: grid;
+  gap: 8px;
+  width: max-content;
+  min-width: 210px;
+  max-width: 280px;
+  padding: 12px;
+  border: 1px solid #383e4b;
+  border-radius: 10px;
+  background: #1d2028;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+  color: var(--heat-text);
+  font-size: 0.8125rem;
+  pointer-events: none;
+}
+
+.heat-tip[hidden] {
+  display: none;
+}
+
+.heat-tip p {
+  margin: 0;
+}
+
+.heat-tip-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.heat-tip-name {
+  font-size: 0.9375rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.heat-tip-sub {
+  color: var(--heat-muted);
+  font-size: 0.75rem;
+}
+
+.heat-tip-return {
+  flex-shrink: 0;
+  padding: 3px 8px;
+  border-radius: 6px;
+  color: #fff;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.heat-tip-facts {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--heat-line);
+}
+
+.heat-tip-facts div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.heat-tip-facts dt {
+  color: var(--heat-muted);
+}
+
+.heat-tip-facts dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.heat-tip-hint {
+  color: var(--heat-muted);
+  font-size: 0.75rem;
+}
+
+.heat-after {
+  display: grid;
+  gap: 8px;
+  padding: 0 4px;
+}
+
+.heat-after p {
+  margin: 0;
+}
+
+.heat-outside {
+  display: grid;
+  gap: 6px;
+}
+
+.heat-outside p {
+  margin: 0;
+}
+
+.heat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 히트맵 칸을 눌렀을 때 창 */
+.heat-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.heat-detail p {
+  margin: 0;
+}
+
+.heat-accounts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heat-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
 }
 
 /* ── CSV 붙여넣기 ─────────────────────── */

@@ -12,7 +12,7 @@ import { loadChartLibrary, renderTrendChart } from '../charts.js';
 import { ageAt, currentMonthIndex, formatMonthIndex, isOlderThan, toYearMonth } from '../dates.js';
 import { getMarket, getPriceStatus, subscribeMarket } from '../market.js';
 import { createSnapshot, latestChange, shouldSuggestSnapshot, upsertSnapshot } from '../snapshot.js';
-import { el, clear, confirmDialog, helpTip, showToast, uid } from '../dom.js';
+import { el, clear, confirmDialog, helpTip, showToast, svg, uid } from '../dom.js';
 import {
   EMPTY, formatDate, formatMoney, formatPercent, formatPercentShort, formatYearMonth, josa, pnlClass,
 } from '../format.js';
@@ -35,6 +35,19 @@ const HELP = {
 
 const ALERT_KINDS = { sector: '섹터', country: '국가', single: '한 종목' };
 
+// 총자산 금액은 가려 두고 누르면 보여 준다. 앱을 새로 열면 다시 가린다 (탭을 옮겨도 이번에 연 동안은 유지).
+let totalRevealed = false;
+const MASK = '••••••';
+
+function eyeIcon(open) {
+  const parts = [
+    svg('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z' }),
+    svg('circle', { cx: '12', cy: '12', r: '3' }),
+  ];
+  if (!open) parts.push(svg('path', { d: 'M3 3l18 18' }));
+  return svg('svg', { class: 'icon', viewBox: '0 0 24 24', 'aria-hidden': 'true' }, ...parts);
+}
+
 // '2026-10' → '2026.10' (그래프 가로축)
 const shortMonth = (month) => month.replace('-', '.');
 
@@ -46,16 +59,26 @@ function tile({ label, help, value, valueClass = '', subs = [], link = null }) {
     link ? el('a', { class: 'kpi-link', href: link.href, text: link.text }) : null);
 }
 
-// 총자산과 투자자산·기타 금융자산 나눔 (가는 막대 + 목록)
-function heroCard(summary, money) {
+// 총자산과 투자자산·기타 금융자산 나눔 (가는 막대 + 목록). 가려 두면 금액 대신 '누르면 보여요' 버튼과 비율만.
+function heroCard(summary, money, { revealed, onToggle }) {
   const parts = [
     { name: '투자자산', value: summary.invested, color: 'series-1' },
     { name: '기타 금융자산', value: summary.others, color: 'series-2' },
   ];
   const share = (value) => (summary.total > 0 ? value / summary.total : 0);
+  const amount = (value) => (revealed ? money(value) : MASK);
+  const value = revealed
+    ? el('p', { class: 'hero-value', text: money(summary.total) })
+    : el('button', { type: 'button', class: 'hero-reveal', 'aria-label': '총자산 금액 보기', onClick: onToggle },
+      el('span', { class: 'hero-mask', 'aria-hidden': 'true', text: `${MASK}원` }),
+      el('span', { class: 'hero-reveal-hint' }, eyeIcon(true), '확인하려면 누르세요'));
   return el('section', { class: 'card dash-hero', 'aria-label': '총자산' },
-    el('p', { class: 'hero-label' }, '총자산', helpTip('총자산', HELP.total)),
-    el('p', { class: 'hero-value', text: money(summary.total) }),
+    el('div', { class: 'hero-head' },
+      el('p', { class: 'hero-label' }, '총자산', helpTip('총자산', HELP.total)),
+      revealed
+        ? el('button', { type: 'button', class: 'btn btn-small hero-hide', 'aria-label': '총자산 금액 가리기', onClick: onToggle }, eyeIcon(false), '가리기')
+        : null),
+    value,
     summary.total > 0
       ? el('div', {
         class: 'split-bar',
@@ -68,9 +91,11 @@ function heroCard(summary, money) {
     el('ul', { class: 'split-legend' }, parts.map((part) => el('li', {},
       el('span', { class: 'swatch', style: `background: var(--${part.color})`, 'aria-hidden': 'true' }),
       el('span', { class: 'split-name', text: part.name }),
-      el('span', { class: 'split-value', text: money(part.value) }),
+      el('span', { class: 'split-value', text: amount(part.value) }),
       summary.total > 0 ? el('span', { class: 'muted', text: formatPercentShort(share(part.value)) }) : null))),
-    summary.cash > 0 ? el('p', { class: 'muted small', text: `투자자산에는 예수금 ${money(summary.cash)}이 들어 있어요.` }) : null);
+    summary.cash > 0
+      ? el('p', { class: 'muted small', text: revealed ? `투자자산에는 예수금 ${money(summary.cash)}이 들어 있어요.` : '투자자산에는 예수금이 들어 있어요.' })
+      : null);
 }
 
 function pnlTile(state, portfolio, money) {
@@ -253,7 +278,7 @@ export function render(root, { getState, updateState, subscribe }) {
     showToast('삭제했어요');
   }
 
-  function trendCard({ snapshots, thisMonth, money, loading, settings }) {
+  function trendCard({ snapshots, thisMonth, money, loading, settings, onReveal }) {
     const titleId = uid('trend-title');
     const hasThisMonth = snapshots.some((item) => item.month === thisMonth);
     const saveButton = el('button', {
@@ -272,6 +297,13 @@ export function render(root, { getState, updateState, subscribe }) {
 
     if (snapshots.length === 0) {
       section.append(el('p', { class: 'muted', text: '아직 기록이 없어요. 한 달에 한 번 기록하면 총자산이 어떻게 변하는지 막대 그래프로 보여드려요.' }));
+      return { element: section, canvas: null };
+    }
+    // 총자산을 가려 둔 동안은 추이(금액)도 가린다
+    if (!totalRevealed) {
+      section.append(el('div', { class: 'trend-masked' },
+        el('p', { class: 'muted', text: `기록 ${snapshots.length}개가 있어요. 금액을 가려 두어서 추이도 함께 가렸어요.` }),
+        el('button', { type: 'button', class: 'btn btn-small', onClick: onReveal }, eyeIcon(true), '금액 보기')));
       return { element: section, canvas: null };
     }
 
@@ -341,10 +373,11 @@ export function render(root, { getState, updateState, subscribe }) {
     const loading = getPriceStatus().state === 'loading';
     if (!loading && shouldSuggestSnapshot({ snapshots: state.snapshots, promptMonth: state.meta.snapshotPromptMonth, month: thisMonth, total: summary.total })) {
       const total = money(summary.total);
+      const what = totalRevealed ? `지금 총자산 ${total}${josa(total, '을', '를')}` : '지금 총자산을';
       root.append(el('section', { class: 'card snapshot-prompt', 'aria-label': '이번 달 기록' },
         el('div', {},
           el('p', { class: 'snapshot-prompt-title', text: `${formatYearMonth(thisMonth)} 기록을 남길까요?` }),
-          el('p', { class: 'muted small', text: `지금 총자산 ${total}${josa(total, '을', '를')} 기록해 두면 달마다 어떻게 변하는지 그래프로 볼 수 있어요.` })),
+          el('p', { class: 'muted small', text: `${what} 기록해 두면 달마다 어떻게 변하는지 그래프로 볼 수 있어요.` })),
         el('div', { class: 'toolbar' },
           el('button', { type: 'button', class: 'btn btn-primary', text: '기록하기', onClick: saveSnapshot }),
           el('button', {
@@ -357,8 +390,13 @@ export function render(root, { getState, updateState, subscribe }) {
 
     // ── 총자산과 요약 숫자 ──
     const plans = planPensions(state.pensions, { settings: s, accountValues: valueByAccount(portfolio.rows, cashInKRW(state.cash, getMarket(state).fx.rate).byAccount), nowMonth });
+    const toggleTotal = () => {
+      totalRevealed = !totalRevealed;
+      draw();
+      root.querySelector(totalRevealed ? '.hero-hide' : '.hero-reveal')?.focus();
+    };
     root.append(
-      heroCard(summary, money),
+      heroCard(summary, money, { revealed: totalRevealed, onToggle: toggleTotal }),
       el('div', { class: 'kpi-grid' },
         pnlTile(state, portfolio, money),
         pensionTile(state, plans, nowMonth, money),
@@ -371,7 +409,7 @@ export function render(root, { getState, updateState, subscribe }) {
     root.append(el('div', { class: 'dash-grid' }, healthCard({ score, alerts }), checksCard(checkItems(state, portfolio))));
 
     // ── 총자산 추이 ──
-    const trend = trendCard({ snapshots: state.snapshots, thisMonth, money, loading, settings: s });
+    const trend = trendCard({ snapshots: state.snapshots, thisMonth, money, loading, settings: s, onReveal: toggleTotal });
     root.append(trend.element);
     if (trend.canvas) {
       const snapshots = state.snapshots;
