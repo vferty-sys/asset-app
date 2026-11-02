@@ -7,7 +7,8 @@ import {
   initState, reloadState, getState, updateState, replaceState, subscribe, switchBackend, isPersistEnabled,
 } from './state.js';
 import { createSyncEngine, dataStorageFor, readSyncConfig } from './sync.js';
-import { initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
+import { getMarket, initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
+import { sheetTickers, unknownSheetTickers } from './price.js';
 import { initInstall } from './install.js';
 import { el, clear, closeAllModals, showToast } from './dom.js';
 import { mountPriceStatus } from './ui/price-status.js';
@@ -36,6 +37,8 @@ const DEFAULT_VIEW = 'dashboard';
 
 // 앱을 다시 펼쳤을 때 마지막 시세가 이보다 오래됐으면 새로 받는다.
 const PRICE_STALE_MS = 15 * 60 * 1000;
+// 보유 종목을 추가해 시트에 없는 티커가 생기면 잠시 뒤(여러 종목을 연달아 넣을 수 있게) 시트에 넣고 시세를 받는다
+const ADD_TICKERS_DELAY_MS = 1500;
 // 기기 연동: 화면을 보고 있는 동안 이 간격으로 다른 기기가 저장했는지 확인한다.
 const SYNC_CHECK_MS = 60 * 1000;
 
@@ -112,18 +115,39 @@ function applyAppearance({ theme, invertPnlColors }) {
   syncThemeColorMeta();
 }
 
+// 시세를 받을 때 보유 종목 티커를 함께 보내, 시트에 없는 티커는 시트 코드가 알아서 넣게 한다
 async function updatePrices(sheetUrl, { quiet = false } = {}) {
-  const result = await refreshPrices(sheetUrl);
+  const result = await refreshPrices(sheetUrl, { tickers: sheetTickers(getState().holdings) });
   if (result.error && !quiet) showToast(`새 시세를 받지 못했어요. ${result.error.message}`, 'danger', 5000);
+  else if (result.added?.length > 0) showToast(`시트에 새 종목 ${result.added.length}개를 넣었어요. 가격은 몇 초 뒤에 들어와요.`);
 }
 
 function watchPrices() {
   let sheetUrl = getState().settings.sheetUrl;
   if (sheetUrl) updatePrices(sheetUrl);
 
+  // 시트가 아직 모르는 티커가 생기면(종목 추가) 그 티커를 넣으러 한 번 시세를 받는다.
+  // 같은 목록으로는 다시 요청하지 않는다 (예전 시트 코드라 넣지 못해도 계속 요청하지 않게).
+  let triedUnknown = '';
+  let addTimer = null;
+  const watchUnknownTickers = (state) => {
+    if (!sheetUrl) return;
+    const market = getMarket(state);
+    if (!market.canAddTickers) return;
+    const unknown = unknownSheetTickers(state.holdings, market).join(',');
+    if (!unknown || unknown === triedUnknown) return;
+    triedUnknown = unknown;
+    clearTimeout(addTimer);
+    addTimer = setTimeout(() => updatePrices(sheetUrl, { quiet: true }), ADD_TICKERS_DELAY_MS);
+  };
+
   subscribe((state) => {
-    if (state.settings.sheetUrl === sheetUrl) return;
+    if (state.settings.sheetUrl === sheetUrl) {
+      watchUnknownTickers(state);
+      return;
+    }
     sheetUrl = state.settings.sheetUrl;
+    triedUnknown = '';
     if (sheetUrl) updatePrices(sheetUrl);
     else resetPriceStatus();
   });

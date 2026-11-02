@@ -1,5 +1,6 @@
 // 구글 시트(Apps Script 웹 앱)에서 시세 받아오기, 응답 검사, 마지막 시세 캐시.
-// 시세 요청은 사용자가 설정한 시트 주소로의 GET 하나이고, 개인 데이터는 보내지 않는다. (기기 연동 요청은 sync.js)
+// 시세 요청은 사용자가 설정한 시트 주소로의 GET 하나다. 보유 종목의 티커(종목 코드)만 함께 보내서
+// 시트에 없는 티커를 시트 코드가 알아서 넣게 하고, 수량·평단가·금액은 보내지 않는다. (기기 연동 요청은 sync.js)
 
 import { STORAGE_KEYS } from './constants.js';
 import { resolveFx } from './calc/valuation.js';
@@ -7,6 +8,12 @@ import { normalizeTicker } from './holding.js';
 import { isPlainObject } from './validate.js';
 
 export const FETCH_TIMEOUT_MS = 20000;
+// 시트에서 달러 환율을 받는 줄 (Code.gs가 CURRENCY:로 시작하는 줄을 환율로 읽는다)
+export const FX_TICKER = 'CURRENCY:USDKRW';
+// 한 번에 시트에 넣어 달라고 보내는 티커 수 (Code.gs의 MAX_ADD_TICKERS와 같게)
+export const SHEET_TICKER_LIMIT = 150;
+// 시트 코드가 티커 자동 추가를 할 수 있는지 (응답의 features)
+const ADD_TICKERS_FEATURE = 'add-tickers';
 
 export class PriceError extends Error {
   constructor(code, message) {
@@ -59,15 +66,40 @@ export function parseSheetResponse(json, { now = new Date() } = {}) {
   const updatedAt = typeof json.updatedAt === 'string' && !Number.isNaN(Date.parse(json.updatedAt))
     ? new Date(json.updatedAt).toISOString()
     : now.toISOString();
-  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors] };
+  // 이번 요청에서 시트 코드가 새로 넣은 티커. 예전 코드는 features가 없다 (저장해 둔 캐시는 canAddTickers로 읽는다)
+  const added = Array.isArray(json.added) ? [...new Set(json.added.map(normalizeTicker).filter(Boolean))] : [];
+  const canAddTickers = json.canAddTickers === true || (Array.isArray(json.features) && json.features.includes(ADD_TICKERS_FEATURE));
+  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors], added, canAddTickers };
+}
+
+// 시트에 넣어 달라고 보낼 티커: 보유 종목 티커(중복 없이) + 달러 종목이 있으면 환율 줄
+export function sheetTickers(holdings) {
+  const tickers = [];
+  const add = (ticker) => {
+    if (ticker && !tickers.includes(ticker)) tickers.push(ticker);
+  };
+  for (const holding of holdings ?? []) add(normalizeTicker(holding.ticker));
+  if ((holdings ?? []).some((holding) => holding.currency === 'USD')) add(FX_TICKER);
+  return tickers.slice(0, SHEET_TICKER_LIMIT);
+}
+
+// 시세 요청 주소: 웹 앱 주소 + ?tickers=KRX:005930,NASDAQ:QQQ
+export function sheetRequestUrl(url, tickers = []) {
+  if (!tickers.length) return url;
+  const request = new URL(url);
+  request.searchParams.set('tickers', tickers.join(','));
+  return request.toString();
 }
 
 // 시트 주소로 GET 요청을 보내 시세를 받는다. 실패하면 사용자에게 보여줄 문구를 담은 PriceError를 던진다.
-export async function fetchSheetPrices(url, { fetchImpl = globalThis.fetch, timeoutMs = FETCH_TIMEOUT_MS, now = () => new Date() } = {}) {
+// tickers: 시트에 없으면 넣어 달라고 함께 보낼 티커 (sheetTickers)
+export async function fetchSheetPrices(url, {
+  tickers = [], fetchImpl = globalThis.fetch, timeoutMs = FETCH_TIMEOUT_MS, now = () => new Date(),
+} = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(url, {
+    const response = await fetchImpl(sheetRequestUrl(url, tickers), {
       method: 'GET', cache: 'no-store', credentials: 'omit', redirect: 'follow', signal: controller.signal,
     });
     if (!response.ok) {
@@ -122,7 +154,18 @@ export function buildMarket({ cache, settings }) {
     errors: data?.errors ?? [],
     updatedAt: data?.updatedAt ?? null,
     fx: resolveFx({ sheetRate: data?.fx.USDKRW ?? null, manualRate: settings.manualFxUsdKrw }),
+    // 시트 코드가 보유 종목 티커를 알아서 넣을 수 있는지 (최신 Code.gs)
+    canAddTickers: Boolean(data?.canAddTickers),
   };
+}
+
+// 보유 종목 중 시트가 아직 모르는 티커 (가격도 오류도 없음). 환율 줄은 환율을 받았으면 아는 것으로 본다.
+export function unknownSheetTickers(holdings, market) {
+  if (market.mode !== 'sheet' || !market.hasData) return [];
+  return sheetTickers(holdings).filter((ticker) => {
+    if (ticker === FX_TICKER) return market.fx.source !== 'sheet' && !market.errors.includes(FX_TICKER);
+    return !Object.hasOwn(market.prices, ticker) && !market.errors.includes(ticker);
+  });
 }
 
 // 시트를 연결했는데 가격을 못 받은 종목을 찾는다.

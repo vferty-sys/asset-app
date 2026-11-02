@@ -210,3 +210,27 @@ export function helpTip(term, text) {
   });
   return el('span', { class: 'help-wrap' }, button, pop);
 }
+
+// 글자를 클립보드에 복사한다. 안 되는 브라우저는 예전 방식으로 한 번 더 시도한다. 복사했으면 true
+export async function copyText(text) {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // 아래의 예전 방식으로 다시 시도한다.
+    }
+  }
+  const area = el('textarea', { class: 'visually-hidden', readonly: true });
+  area.value = text;
+  document.body.append(area);
+  area.select();
+  let copied = false;
+  try {
+    copied = document.execCommand('copy');
+  } catch {
+    copied = false;
+  }
+  area.remove();
+  return copied;
+}

@@ -2,8 +2,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { parseSheetResponse } from '../js/price.js';
-import { FakeSheet, load } from './helpers/apps-script-harness.js';
+import { fetchSheetPrices, parseSheetResponse, sheetTickers } from '../js/price.js';
+import { FakeSheet, fakeWebAppFetch, load } from './helpers/apps-script-harness.js';
 
 const HEADER = ['티커', '가격', '통화'];
 
@@ -49,19 +49,74 @@ test('doGet: 코드 실행 중 오류가 나면 error 문구를 돌려준다', (
   assert.deepEqual(JSON.parse(context.doGet().text), { error: '권한 없음' });
 });
 
-test('setupSheet: 시세 탭, 제목 줄, 환율 줄, 예시 종목과 수식을 만든다', () => {
+test('setupSheet: 시세 탭, 제목 줄, 환율 줄과 수식을 만든다 (종목 줄은 앱이 넣으므로 예시 없음)', () => {
   const sheets = [new FakeSheet('시트1', 1)];
   const { context } = load(sheets);
   context.setupSheet();
   const sheet = sheets[0];
   assert.equal(sheet.name, '시세');
-  assert.deepEqual(sheet.getRange(1, 1, 4, 1).getValues().flat(), ['티커', 'CURRENCY:USDKRW', 'KRX:005930', 'NASDAQ:QQQ']);
+  assert.deepEqual(sheet.getRange(1, 1, 3, 1).getValues().flat(), ['티커', 'CURRENCY:USDKRW', '']);
+  assert.equal(sheet.getLastRow(), 2);
   // 환율은 칸을 가리키거나 "price"를 붙이면 #N/A가 날 수 있어 티커를 수식에 직접 적는다
   assert.equal(sheet.cell(2, 2).formula, '=GOOGLEFINANCE("CURRENCY:USDKRW")');
   assert.equal(sheet.cell(2, 3).formula, '');
-  assert.equal(sheet.cell(3, 2).formula, '=GOOGLEFINANCE(A3, "price")');
-  assert.equal(sheet.cell(3, 3).formula, '=GOOGLEFINANCE(A3, "currency")');
   assert.equal(sheets[1].name, '시트1');
+});
+
+const quoteSheet = (rows) => new FakeSheet('시세', 1, [HEADER, ...rows]);
+const getWith = (context, tickers) => JSON.parse(context.doGet({ parameter: { tickers } }).text);
+
+test('티커 자동 추가: 시트에 없는 티커만 A열 끝에 넣고 B·C열 수식을 채운다', () => {
+  const sheet = quoteSheet([['CURRENCY:USDKRW', 1380, ''], ['KRX:005930', 61000, 'KRW']]);
+  const { context, calls } = load([sheet]);
+  const json = getWith(context, 'krx:005930, NYSEARCA:SCHD,KRX:0085P0,NYSEARCA:SCHD,삼성전자,KRX:,=IMPORTXML("x"),CURRENCY:JPYKRW');
+  assert.deepEqual(json.added, ['NYSEARCA:SCHD', 'KRX:0085P0', 'CURRENCY:JPYKRW']);
+  assert.deepEqual(json.features, ['add-tickers']);
+  assert.deepEqual(sheet.getRange(4, 1, 3, 1).getValues().flat(), ['NYSEARCA:SCHD', 'KRX:0085P0', 'CURRENCY:JPYKRW']);
+  assert.equal(sheet.cell(4, 2).formula, '=GOOGLEFINANCE(A4, "price")');
+  assert.equal(sheet.cell(4, 3).formula, '=GOOGLEFINANCE(A4, "currency")');
+  assert.equal(sheet.cell(5, 2).formula, '=GOOGLEFINANCE(A5, "price")');
+  assert.equal(sheet.cell(6, 2).formula, '=GOOGLEFINANCE("CURRENCY:JPYKRW")', '환율 줄은 환율 수식');
+  assert.equal(sheet.cell(6, 3).formula, '', '환율 줄의 통화 칸은 비움');
+  assert.equal(sheet.getLastRow(), 6, '이상한 글자는 넣지 않음');
+  // 새로 넣었으면 구글 금융이 가격을 채울 시간을 준 뒤 읽는다. 가격이 아직 없으면 errors로
+  assert.equal(calls.flush, 1);
+  assert.deepEqual(calls.sleep, [2500]);
+  assert.ok(json.errors.includes('NYSEARCA:SCHD'));
+  assert.equal(json.prices['KRX:005930'].price, 61000);
+});
+
+test('티커 자동 추가: 모두 이미 있으면 아무것도 바꾸지 않고, 잠그거나 기다리지 않는다', () => {
+  const sheet = quoteSheet([['KRX:005930', 61000, 'KRW'], ['NASDAQ:QQQ', 512, 'USD']]);
+  const { context, calls } = load([sheet]);
+  const json = getWith(context, 'KRX:005930,nasdaq:qqq');
+  assert.deepEqual(json.added, []);
+  assert.equal(sheet.getLastRow(), 3);
+  assert.deepEqual(calls, { flush: 0, sleep: [], locks: 0 });
+  // tickers 없이 부르면 예전처럼 읽기만
+  assert.deepEqual(JSON.parse(context.doGet().text).added, []);
+});
+
+test('티커 자동 추가: 제목 줄이 없는 빈 시트에도 넣고, 시트는 1000줄까지만', () => {
+  const empty = new FakeSheet('시세', 1);
+  const json = getWith(load([empty]).context, 'NYSE:KO');
+  assert.deepEqual(json.added, ['NYSE:KO']);
+  assert.deepEqual(empty.getRange(1, 1, 2, 3).getValues()[0], HEADER);
+  assert.equal(empty.cell(2, 1).value, 'NYSE:KO');
+
+  const full = quoteSheet(Array.from({ length: 998 }, (_, i) => [`KRX:${String(100000 + i)}`, 1, 'KRW']));
+  const capped = getWith(load([full]).context, 'NYSE:KO,NYSE:PEP,NYSE:JNJ');
+  assert.deepEqual(capped.added, ['NYSE:KO'], '1000줄을 넘지 않게');
+  assert.equal(full.getLastRow(), 1000);
+});
+
+test('티커 자동 추가: 시세 탭이 없으면 기기 연동 탭(앱 데이터)은 건너뛰고 다른 탭에 넣는다', () => {
+  const syncTab = new FakeSheet('앱 데이터', 1, [['내부']]);
+  const first = new FakeSheet('시트1', 2, [HEADER]);
+  const json = getWith(load([syncTab, first]).context, 'NYSE:KO');
+  assert.deepEqual(json.added, ['NYSE:KO']);
+  assert.equal(first.cell(2, 1).value, 'NYSE:KO');
+  assert.equal(syncTab.getLastRow(), 1);
 });
 
 test('setupSheet: 이미 적어 둔 티커는 지우지 않는다', () => {
@@ -234,4 +289,25 @@ test('기기 연동: 이상한 요청은 오류로 답한다', () => {
   assert.equal(JSON.parse(context.doPost({ postData: { contents: '{not json' } }).text).error, 'server');
   const sheets = [new FakeSheet('시세', 1, [HEADER])];
   assert.equal(post(load(sheets).context, { action: 'sync-load', auth: 'x' }).error, 'not-setup');
+});
+
+test('앱 → 시트 코드: 시세를 받을 때 보유 종목 티커를 보내면 시트에 없는 것만 넣고, 다음에는 넣지 않는다', async () => {
+  const sheet = new FakeSheet('시세', 1, [HEADER, ['KRX:005930', 61000, 'KRW']]);
+  const { context } = load([sheet]);
+  const fetchImpl = fakeWebAppFetch(context);
+  const url = 'https://script.google.com/macros/s/abc/exec';
+  const holdings = [{ ticker: 'KRX:005930', currency: 'KRW' }, { ticker: 'NYSEARCA:SCHD', currency: 'USD' }];
+  const first = await fetchSheetPrices(url, { tickers: sheetTickers(holdings), fetchImpl });
+  assert.deepEqual(first.added, ['NYSEARCA:SCHD', 'CURRENCY:USDKRW']);
+  assert.equal(first.canAddTickers, true);
+  assert.deepEqual(sheet.getRange(3, 1, 2, 1).getValues().flat(), ['NYSEARCA:SCHD', 'CURRENCY:USDKRW']);
+  // 구글 금융이 가격을 채운 뒤
+  sheet.write(3, 2, { value: 27.5, formula: sheet.cell(3, 2).formula });
+  sheet.write(3, 3, { value: 'USD', formula: sheet.cell(3, 3).formula });
+  sheet.write(4, 2, { value: 1390, formula: sheet.cell(4, 2).formula });
+  const second = await fetchSheetPrices(url, { tickers: sheetTickers(holdings), fetchImpl });
+  assert.deepEqual(second.added, []);
+  assert.equal(second.prices['NYSEARCA:SCHD'].price, 27.5);
+  assert.equal(second.fx.USDKRW, 1390);
+  assert.equal(sheet.getLastRow(), 4);
 });

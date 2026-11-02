@@ -39,6 +39,11 @@ export class FakeRange {
     return this;
   }
 
+  setFormulas(formulas) {
+    this.forEachCell((row, column, r, c) => this.sheet.write(row, column, { value: '', formula: formulas[r][c] }));
+    return this;
+  }
+
   clearContent() {
     this.forEachCell((row, column) => this.sheet.write(row, column, { value: '', formula: '' }));
     return this;
@@ -117,6 +122,7 @@ export class FakeSheet {
 }
 
 export function load(sheets) {
+  const calls = { flush: 0, sleep: [], locks: 0 };
   const spreadsheet = {
     sheets,
     getSheetByName: (name) => sheets.find((sheet) => sheet.name === name) ?? null,
@@ -128,9 +134,10 @@ export function load(sheets) {
     },
   };
   const context = vm.createContext({
-    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet },
-    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    SpreadsheetApp: { getActiveSpreadsheet: () => spreadsheet, flush: () => { calls.flush += 1; } },
+    LockService: { getScriptLock: () => ({ waitLock() { calls.locks += 1; }, releaseLock() {} }) },
     Utilities: {
+      sleep: (ms) => { calls.sleep.push(ms); },
       DigestAlgorithm: { SHA_256: 'sha256' },
       Charset: { UTF_8: 'utf8' },
       computeDigest: (algorithm, value) => [...createHash(algorithm).update(String(value), 'utf8').digest()],
@@ -142,7 +149,7 @@ export function load(sheets) {
     },
   });
   vm.runInContext(CODE, context);
-  return { context, spreadsheet };
+  return { context, spreadsheet, calls };
 }
 
 // 웹 앱 주소로 오는 요청을 Code.gs의 doGet·doPost로 보내는 가짜 fetch (브라우저 fetch와 같은 모양으로 답한다)
