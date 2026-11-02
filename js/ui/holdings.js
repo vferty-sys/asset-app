@@ -12,23 +12,26 @@ import { openHoldingForm } from './holding-form.js';
 import { openCsvImport } from './holdings-csv.js';
 import { cashCard } from './cash-form.js';
 import { segmented } from './form.js';
-import { HEATMAP_WIDE_QUERY, holdingsHeatmap } from './heatmap.js';
+import { holdingsHeatmap } from './heatmap.js';
 
-// 종목을 히트맵으로 볼지 목록으로 볼지 (이 기기에만 기억)
+// 종목을 히트맵으로 볼지 목록으로 볼지, 히트맵을 무엇으로 묶을지 (이 기기에만 기억)
 const VIEW_KEY = `${STORAGE_PREFIX}holdingsView`;
+const GROUP_KEY = `${STORAGE_PREFIX}heatmapGroup`;
 const VIEW_OPTIONS = [['heatmap', '히트맵'], ['list', '목록']];
+const GROUP_VALUES = ['assetClass', 'account', 'none'];
 
-function readView() {
+function readPref(key, allowed) {
   try {
-    return globalThis.localStorage?.getItem(VIEW_KEY) === 'list' ? 'list' : 'heatmap';
+    const value = globalThis.localStorage?.getItem(key);
+    return allowed.includes(value) ? value : allowed[0];
   } catch {
-    return 'heatmap';
+    return allowed[0];
   }
 }
 
-function saveView(view) {
+function savePref(key, value) {
   try {
-    globalThis.localStorage?.setItem(VIEW_KEY, view);
+    globalThis.localStorage?.setItem(key, value);
   } catch {
     // 저장할 수 없으면 이번에만 바꾼다
   }
@@ -125,7 +128,8 @@ function stat({ label, help, value, valueClass = '', sub, subClass = '', main = 
 
 export function render(root, { getState, updateState, subscribe }) {
   const openForm = (holding) => openHoldingForm({ holding, getState, updateState });
-  let view = readView();
+  let view = readPref(VIEW_KEY, ['heatmap', 'list']);
+  let groupBy = readPref(GROUP_KEY, GROUP_VALUES);
 
   function toolbar(withView = false) {
     const viewControl = withView
@@ -134,7 +138,7 @@ export function render(root, { getState, updateState, subscribe }) {
         value: view,
         onChange: (next) => {
           view = next;
-          saveView(next);
+          savePref(VIEW_KEY, next);
           draw();
           root.querySelector('.view-toggle input:checked')?.focus();
         },
@@ -233,6 +237,14 @@ export function render(root, { getState, updateState, subscribe }) {
       const heatmap = holdingsHeatmap({
         rows: portfolio.rows,
         money,
+        groupBy,
+        invertColors: state.settings.invertPnlColors,
+        onGroupChange: (next) => {
+          groupBy = next;
+          savePref(GROUP_KEY, next);
+          draw();
+          root.querySelector('.heat-groupby input:checked')?.focus();
+        },
         onSelect: (item) => openHeatDetail(item, { money, mode: market.mode, openForm }),
       });
       // 평가금액이 0이거나 모르는 종목(새로 살 종목·가격 없음·환율 없음)은 칸이 없으니 아래에 따로
@@ -244,8 +256,8 @@ export function render(root, { getState, updateState, subscribe }) {
       };
       root.append(el('section', { class: 'holdings-section', 'aria-label': '종목 히트맵' },
         toolbar(true),
-        el('div', { class: 'card heatmap-card' },
-          heatmap ?? el('p', { class: 'muted', text: '평가금액이 있는 종목이 없어서 히트맵을 그릴 수 없어요.' }),
+        heatmap ?? el('p', { class: 'card muted', text: '평가금액이 있는 종목이 없어서 히트맵을 그릴 수 없어요.' }),
+        el('div', { class: 'heat-after' },
           outside.length > 0
             ? el('div', { class: 'heat-outside' },
               el('p', { class: 'muted small', text: '히트맵에 없는 종목 (평가금액 0 또는 모름)' }),
@@ -253,7 +265,7 @@ export function render(root, { getState, updateState, subscribe }) {
                 type: 'button', class: 'btn btn-small', onClick: () => openForm(row.holding),
               }, `${row.holding.name} · ${outsideReason(row)}`)))))
             : null,
-          el('p', { class: 'muted small', text: '칸을 누르면 금액·손익과 계좌별 보유 내역을 보고 고칠 수 있어요. 자세한 표는 "목록"에서 볼 수 있어요.' }))), cash());
+          el('p', { class: 'muted small', text: '칸을 누르면 계좌별 보유 내역을 보고 고칠 수 있어요. 자세한 표는 "목록"에서 볼 수 있어요.' }))), cash());
       return;
     }
 
@@ -301,15 +313,8 @@ export function render(root, { getState, updateState, subscribe }) {
   draw();
   const unsubscribeState = subscribe(draw);
   const unsubscribeMarket = subscribeMarket(draw);
-  // 휴대폰 ↔ PC 너비를 넘나들면 히트맵 모양(가로세로 비율)을 다시 계산한다
-  const wideQuery = globalThis.matchMedia?.(HEATMAP_WIDE_QUERY);
-  const redrawHeatmap = () => {
-    if (view === 'heatmap') draw();
-  };
-  wideQuery?.addEventListener('change', redrawHeatmap);
   return () => {
     unsubscribeState();
     unsubscribeMarket();
-    wideQuery?.removeEventListener('change', redrawHeatmap);
   };
 }
