@@ -6,6 +6,8 @@
 //  - 국내 ETF와 그 분류(시장지수·업종테마·파생·해외·원자재·채권·기타): 네이버 금융 ETF 목록
 //    (한국거래소 KIND는 해외 서버 접속을 막고, 정보데이터시스템은 로그인이 있어야 자료를 줘서 쓰지 않는다)
 //  - 미국: S&P500 구성 종목(GICS 섹터), 나스닥·NYSE 상장 목록(거래소 확인용) — GitHub의 공개 데이터셋
+//         미국 상장 전체 주식(나라·업종·시가총액): 나스닥 종목 검색 화면 자료를 매일 모아 두는 공개 저장소
+//         (rreichel3/US-Stock-Symbols). S&P500 밖 종목은 이 자료의 업종·나라로 섹터·국가를 정한다.
 //  - 많이 사는 미국 ETF·종목과 한글 이름: scripts/stock-extras.mjs
 // 어느 자료를 받지 못하면 그 부분은 지난 목록을 그대로 쓴다 (목록이 통째로 비지 않게).
 // 프록시 뒤에서 실행할 때는 NODE_USE_ENV_PROXY=1 을 붙인다 (Node 22.21 이상).
@@ -14,8 +16,11 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseDelimited } from '../js/calc/csv.js';
-import { classifyEtf, sectorFromGics, sectorFromKrIndustry, stockAssetClass } from '../js/classify.js';
-import { US_ALIASES, US_ETFS, US_EXTRA_STOCKS } from './stock-extras.mjs';
+import {
+  classifyEtf, cleanUsCompanyName, countryFromNasdaq, guessSectorFromName, sectorFromGics, sectorFromKrIndustry, sectorFromNasdaq,
+  stockAssetClass,
+} from '../js/classify.js';
+import { US_ALIASES, US_ETFS, US_EXTRA_STOCKS, US_POPULAR_ALIASES } from './stock-extras.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = join(ROOT, 'data', 'stocks.json');
@@ -26,7 +31,16 @@ const SOURCES = {
   sp500: 'https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv',
   nasdaq: 'https://raw.githubusercontent.com/datasets/nasdaq-listings/main/data/nasdaq-listed-symbols.csv',
   other: 'https://raw.githubusercontent.com/datasets/nyse-other-listings/main/data/other-listed.csv',
+  usAll: (file) => `https://raw.githubusercontent.com/rreichel3/US-Stock-Symbols/main/${file}/${file}_full_tickers.json`,
 };
+// 미국 상장 전체 주식 자료의 파일 → 구글 금융 거래소 이름
+const US_ALL_FILES = { nyse: 'NYSE', nasdaq: 'NASDAQ', amex: 'NYSEAMERICAN' };
+// 이보다 적게 받으면 자료가 잘못된 것으로 보고 지난 목록을 쓴다
+const US_MIN_STOCKS = 4000;
+// 미국 시가총액(달러)을 국내 종목과 같은 자릿수(억원)로 맞출 때 쓰는 대략 환율 (자릿수만 쓰니 정확하지 않아도 된다)
+const SIZE_KRW_PER_USD = 1400;
+// 워런트·유닛·우선주·채권 같은 주식이 아닌 증권은 뺀다
+const US_NOT_STOCK = /warrant|\bunits?\b|\brights?\b|preferred|notes? due|debenture|%|subordinated|perpetual|depositary shares? representing|\bseries [a-z]\b/i;
 const USER_AGENT = 'Mozilla/5.0 (compatible; asset-app stock list builder)';
 const US_EXCHANGES = { N: 'NYSE', A: 'NYSEAMERICAN', P: 'NYSEARCA', Z: 'BATS' };
 // 한 번에 다 받으면 자료를 주는 쪽에 부담이라 요청 사이를 조금 띄운다
@@ -166,22 +180,68 @@ async function usExchanges() {
   };
 }
 
+// 미국 상장 전체 주식 (나스닥·NYSE·NYSE American). [{ symbol, name, country, sector, industry, marketCap, exchange }]
+async function usAllRows() {
+  const rows = [];
+  for (const [file, exchange] of Object.entries(US_ALL_FILES)) {
+    const list = JSON.parse(await request(SOURCES.usAll(file)));
+    if (!Array.isArray(list)) throw new Error(`${file}: 자료 모양이 바뀌었어요`);
+    for (const row of list) rows.push({ ...row, exchange });
+    await pause();
+  }
+  if (rows.length < US_MIN_STOCKS) throw new Error(`미국 주식이 ${rows.length}개뿐이에요 (자료 모양이 바뀌었을 수 있어요)`);
+  return rows;
+}
+
+// 'BRK/B' → 'BRK.B' (구글 금융·S&P500 자료와 같은 모양)
+const usSymbol = (value) => String(value ?? '').trim().toUpperCase().replace('/', '.');
+const usSize = (marketCap) => sizeField((Number(marketCap) * SIZE_KRW_PER_USD) / 1e8);
+const aliasesOf = (symbol) => [...new Set([...(US_ALIASES[symbol] ?? []), ...(US_POPULAR_ALIASES[symbol] ?? [])])];
+const aliasField = (symbol) => {
+  const aliases = aliasesOf(symbol);
+  return aliases.length ? { al: aliases } : {};
+};
+
 async function usStocks(tickerOf) {
-  const rows = await csvRecords(SOURCES.sp500);
+  const [rows, allRows] = await Promise.all([csvRecords(SOURCES.sp500), usAllRows()]);
+  const bySymbol = new Map(allRows.map((row) => [usSymbol(row.symbol), row]));
+  // 거래소는 상장 목록(거래소 확인용)을 먼저 보고, 없으면 전체 주식 자료의 거래소
+  const tickerFor = (symbol) => {
+    const ticker = tickerOf(symbol);
+    const row = bySymbol.get(symbol);
+    return ticker.includes(':') || !row ? ticker : `${row.exchange}:${symbol}`;
+  };
   const items = rows.filter((row) => row.Symbol && row.Security).map((row) => {
     const sector = sectorFromGics(row['GICS Sector']);
-    const aliases = US_ALIASES[row.Symbol] ?? [];
     return {
-      t: tickerOf(row.Symbol), n: row.Security, ...(aliases.length ? { al: aliases } : {}), k: 's', c: 'USD', co: '미국', se: sector,
-      a: stockAssetClass({ name: row.Security, sector, detail: row['GICS Sub-Industry'] }), g: 'us',
+      t: tickerFor(row.Symbol), n: row.Security, ...aliasField(row.Symbol), k: 's', c: 'USD', co: '미국', se: sector,
+      a: stockAssetClass({ name: row.Security, sector, detail: row['GICS Sub-Industry'] }), ...usSize(bySymbol.get(row.Symbol)?.marketCap), g: 'us',
     };
   });
   const listed = new Set(items.map((item) => item.t.split(':').pop()));
   for (const [symbol, name, aliases, sector, country] of US_EXTRA_STOCKS) {
     if (listed.has(symbol)) continue;
+    listed.add(symbol);
+    const merged = [...new Set([...aliases, ...aliasesOf(symbol)])];
     items.push({
-      t: tickerOf(symbol), n: name, ...(aliases.length ? { al: aliases } : {}), k: 's', c: 'USD', co: country, se: sector,
-      a: stockAssetClass({ name, sector }), g: 'us',
+      t: tickerFor(symbol), n: name, ...(merged.length ? { al: merged } : {}), k: 's', c: 'USD', co: country, se: sector,
+      a: stockAssetClass({ name, sector }), ...usSize(bySymbol.get(symbol)?.marketCap), g: 'us',
+    });
+  }
+  // S&P500 밖의 미국 상장 주식: 나스닥 자료의 업종·나라로 섹터·국가를 정하고, 모르면 짐작한 값에 표시를 남긴다
+  //  gc: 국가를 짐작함 (자료에 나라가 없어 '미국'으로, 또는 조세 회피처라 '기타'로) / gs: 섹터를 회사 이름으로 짐작했거나 몰라서 '기타'
+  for (const row of allRows) {
+    const symbol = usSymbol(row.symbol);
+    if (listed.has(symbol) || !/^[A-Z]{1,5}(\.[A-Z])?$/.test(symbol) || US_NOT_STOCK.test(row.name ?? '')) continue;
+    listed.add(symbol);
+    const name = cleanUsCompanyName(row.name) || symbol;
+    const mappedSector = sectorFromNasdaq(row.sector, row.industry);
+    const sector = mappedSector ?? guessSectorFromName(name) ?? '기타';
+    const country = countryFromNasdaq(row.country);
+    items.push({
+      t: tickerFor(symbol), n: name, ...aliasField(symbol), k: 's', c: 'USD', co: country?.country ?? '미국', se: sector,
+      a: stockAssetClass({ name, sector, detail: row.industry }), ...usSize(row.marketCap),
+      ...(country?.certain ? {} : { gc: 1 }), ...(mappedSector ? {} : { gs: 1 }), g: 'us',
     });
   }
   return items;

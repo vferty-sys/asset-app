@@ -21,10 +21,11 @@ const mixOf = (value) => {
 
 // 파일의 짧은 이름표를 화면에서 쓰는 이름으로 바꾼다
 export function expandItem(raw) {
+  const aliases = raw.al ?? [];
   return {
     ticker: raw.t,
     name: raw.n,
-    aliases: raw.al ?? [],
+    aliases,
     type: raw.k === 'e' ? 'etf' : 'stock',
     currency: raw.c,
     countryMix: mixOf(raw.co),
@@ -36,6 +37,11 @@ export function expandItem(raw) {
     approx: Boolean(raw.ax),
     group: raw.g ?? '',
     size: raw.sz ?? 0,
+    // 목록을 만들 때 자료가 없어 짐작한 값 (입력 화면에서 확인해 달라고 알린다)
+    guessed: { country: Boolean(raw.gc), sector: Boolean(raw.gs) },
+    // 검색용으로 미리 정리해 둔 이름·코드 (종목이 만 개쯤이라 글자를 칠 때마다 다시 정리하지 않게)
+    searchNames: [raw.n, ...aliases].map(normalizeQuery),
+    searchCode: normalizeQuery(codeOf(raw.t)),
   };
 }
 
@@ -69,8 +75,9 @@ export function searchStocks(items, query, { limit = 8 } = {}) {
   if (!q) return [];
   const scored = [];
   for (const item of items) {
-    const code = codeOf(item.ticker).toLowerCase();
-    const names = [item.name, ...item.aliases].map(normalizeQuery);
+    // 'BRK.B'처럼 점이 든 코드도 검색어처럼 정리해서 비교한다 ('brk.b' → 'brkb')
+    const code = item.searchCode ?? normalizeQuery(codeOf(item.ticker));
+    const names = item.searchNames ?? [item.name, ...item.aliases].map(normalizeQuery);
     let score = 0;
     if (code === q) score = 100;
     else if (names.includes(q)) score = 95;

@@ -85,11 +85,122 @@ export function sectorFromGics(sector) {
   return GICS_SECTORS[String(sector ?? '').trim()] ?? '기타';
 }
 
+// ── 미국 상장 전체 종목 (나스닥 종목 검색 화면 자료): 업종·섹터·나라 → 앱 값 ─────────────
+// 나스닥 자료의 섹터는 엉뚱한 경우가 있어(예: 실험 장비 회사를 산업재로) 업종 이름을 먼저 보고, 없으면 섹터를 본다.
+const US_INDUSTRY_RULES = [
+  [/Real Estate Investment Trusts|Building operators|^Real Estate$/i, '부동산'],
+  [/Oil|Gas Production|Coal Mining|Oilfield|Integrated oil|Oil\/Gas Transmission/i, '에너지'],
+  [/Electric Utilities|Natural Gas Distribution|Power Generation|Water Supply/i, '유틸리티'],
+  [/Semiconductor|Computer|EDP Services|Electronic Components|Communications Equipment|Telecommunications Equipment/i, '기술'],
+  [/Cable & Other Pay Television|Broadcasting|Advertising|Movies\/Entertainment|Newspapers|Publishing|Books/i, '통신'],
+  [/Biotechnology|Pharmaceutical|Medic|Hospital|Health|Ophthalmic/i, '헬스케어'],
+  [/Banks|Savings Institutions|Insurance|Insurers|Finance|Investment|Blank Checks|Trusts Except|Diversified Financial/i, '금융'],
+  [/Cosmetics|Beverages|Packaged Foods|Food|Meat|Farming|Tobacco|Drug Stores/i, '필수소비재'],
+  [/Mining|Precious Metals|Other Metals|Steel|Aluminum|Chemicals|Paints|Paper|Forest Products|Containers|Plastic Products|Building Materials/i, '소재'],
+  [/Aerospace|Military|Ordnance|Industrial Machinery|Construction\/Ag Equipment|Electrical Products|Fluid Controls|Metal Fabrications|Engineering & Construction|Railroads|Trucking|Air Freight|Integrated Freight|Marine Transportation|Transportation|Professional Services|Business Services|Commercial Services|Environmental Services|Pollution Control|Leasing|Building Products|Pipeline|Office Equipment|Wholesale Distributors|Electronics Distribution|Tools\/Hardware|commerical equipment|Multi-Sector|Bldg Contractors/i, '산업재'],
+  [/Auto|Motor Vehicles|Apparel|Clothing|Shoe|Garments|Textiles|Home Furnishings|Homebuilding|Hotels|Restaurants|Recreational|Amusement|Specialty Distribution|Retail|Specialty Stores|Consumer Electronics|Consumer Specialties|Durable Goods|Miscellaneous manufacturing/i, '소비재'],
+];
+
+const NASDAQ_SECTORS = {
+  Technology: '기술',
+  Telecommunications: '통신',
+  'Consumer Discretionary': '소비재',
+  'Consumer Staples': '필수소비재',
+  'Health Care': '헬스케어',
+  Finance: '금융',
+  'Real Estate': '부동산',
+  Industrials: '산업재',
+  Energy: '에너지',
+  'Basic Materials': '소재',
+  Utilities: '유틸리티',
+  Miscellaneous: '기타',
+};
+
+// 업종·섹터로 앱 섹터를 정한다. 둘 다 없거나 모르는 이름이면 null (그때는 회사 이름으로 짐작)
+export function sectorFromNasdaq(sector, industry) {
+  const detail = String(industry ?? '').trim();
+  if (detail) {
+    for (const [pattern, mapped] of US_INDUSTRY_RULES) {
+      if (pattern.test(detail)) return mapped;
+    }
+  }
+  return NASDAQ_SECTORS[String(sector ?? '').trim()] ?? null;
+}
+
+// 나스닥 자료의 나라(본사·설립 나라) → 앱 국가. { country, certain }. 모르면 null
+//  조세 회피처(버뮤다·케이맨 제도 …)는 실제로 사업하는 나라를 알 수 없어서 '기타'로 두고 짐작(certain: false)으로 표시한다.
+const NASDAQ_COUNTRIES = {
+  'United States': '미국', 'Puerto Rico': '미국', 'U.S. Virgin Islands': '미국',
+  China: '중국', 'Hong Kong': '중국', Macau: '중국',
+  Japan: '일본', Taiwan: '대만', India: '인도', Vietnam: '베트남', 'South Korea': '한국',
+  'United Kingdom': '영국', Jersey: '영국', Guernsey: '영국', 'Isle of Man': '영국', Gibraltar: '영국',
+  Germany: '독일', France: '프랑스', Monaco: '프랑스', Switzerland: '스위스',
+  Canada: '캐나다', Australia: '호주', Brazil: '브라질',
+};
+const EUROPE_COUNTRIES = [
+  'Netherlands', 'Ireland', 'Luxembourg', 'Sweden', 'Belgium', 'Italy', 'Denmark', 'Spain', 'Cyprus', 'Finland', 'Norway',
+  'Austria', 'Portugal', 'Greece', 'Poland', 'Czech Republic', 'Hungary', 'Iceland', 'Malta', 'Liechtenstein', 'Estonia',
+  'Lithuania', 'Latvia', 'Slovenia', 'Slovakia', 'Croatia', 'Romania', 'Bulgaria',
+];
+const EMERGING_COUNTRIES = [
+  'Mexico', 'Argentina', 'Chile', 'Colombia', 'Peru', 'Uruguay', 'Panama', 'Costa Rica', 'Ecuador', 'Bolivia', 'Paraguay',
+  'Guatemala', 'Dominican Republic', 'Jamaica', 'Indonesia', 'Malaysia', 'Philippines', 'Thailand', 'Cambodia', 'Mongolia',
+  'Kazakhstan', 'Turkey', 'South Africa', 'Egypt', 'Nigeria', 'Kenya', 'Ghana', 'Morocco', 'Jordan', 'United Arab Emirates',
+  'Saudi Arabia', 'Qatar', 'Kuwait', 'Bahrain', 'Oman', 'Pakistan', 'Bangladesh', 'Sri Lanka', 'Georgia', 'Ukraine', 'Russia',
+];
+const TAX_HAVENS = ['Bermuda', 'Cayman Islands', 'British Virgin Islands', 'Marshall Islands', 'Curacao', 'Bahamas', 'Barbados', 'Netherlands Antilles'];
+
+export function countryFromNasdaq(country) {
+  const text = String(country ?? '').trim();
+  if (!text) return null;
+  if (Object.hasOwn(NASDAQ_COUNTRIES, text)) return { country: NASDAQ_COUNTRIES[text], certain: true };
+  if (EUROPE_COUNTRIES.includes(text)) return { country: '유럽', certain: true };
+  if (EMERGING_COUNTRIES.includes(text)) return { country: '신흥국', certain: true };
+  if (TAX_HAVENS.includes(text)) return { country: '기타', certain: false };
+  return { country: '기타', certain: true }; // 이스라엘·싱가포르처럼 목록에 없는 선진국
+}
+
+// 나스닥 자료의 증권 이름에서 주식 종류 설명을 뗀다.
+//  'Abercrombie & Fitch Company Common Stock' → 'Abercrombie & Fitch Company'
+//  'Petroleo Brasileiro S.A. Petrobras ADS' → 'Petroleo Brasileiro S.A. Petrobras'
+//  'Grab Holdings Limited Class A Ordinary Shares' → 'Grab Holdings Limited Class A'
+export function cleanUsCompanyName(raw) {
+  let name = String(raw ?? '').replace(/\s+/g, ' ').trim();
+  name = name.replace(/\s+[-–,]?\s*(American Deposit[ao]ry (Shares?|Receipts?)|Sponsored ADR|Depositary Shares?)\b.*$/i, '');
+  name = name.replace(/\s+[-–,]?\s*(ADS|ADR)\b.*$/, '');
+  name = name.replace(/\s+[-–,]?\s*(Class [A-C] )?(Common Stock|Common Shares?|Ordinary Shares?|Subordinate Voting Shares?|Shares of Beneficial Interest|Capital Stock)\b.*$/i,
+    (match, shareClass) => (shareClass ? ` ${shareClass.trim()}` : ''));
+  return name.replace(/\s*[-–,]\s*$/, '').trim();
+}
+
+// 업종 자료가 없을 때 회사 이름으로 섹터 짐작 (영어·한글). 앞에서부터 처음 맞는 규칙. 모르면 null
+const NAME_SECTOR_RULES = [
+  [/REIT|Realty|Properties|Real Estate|리츠|부동산/i, '부동산'],
+  [/Bank|Bancorp|Bancshares|Financial|Insurance|Assurance|Acquisition Corp|Investment|Asset Management|Capital Corp|은행|금융|증권|보험|캐피탈|지주/i, '금융'],
+  [/Pharma|Therapeutics|\bBio|Medical|Health|Genetics|Diagnostics|Oncology|Clinical|Surgical|제약|바이오|헬스|메디|의료|진단/i, '헬스케어'],
+  [/Petro|\bOil\b|\bGas\b|Energy|Drilling|Pipeline|에너지|석유|오일|가스/i, '에너지'],
+  [/Electric|Power|Utilit|\bWater\b|전력|발전|수도/i, '유틸리티'],
+  [/Semiconductor|Software|Technolog|Digital|Cloud|Cyber|Computing|\bAI\b|Robotics|반도체|소프트|테크|전자|디지털/i, '기술'],
+  [/Mining|\bGold\b|Silver|Metals?\b|Steel|Chemical|Materials|Lithium|Copper|광업|철강|화학|소재|금속/i, '소재'],
+  [/Telecom|Communications|Media|Entertainment|Broadcasting|Games|통신|미디어|엔터|방송|게임/i, '통신'],
+  [/Foods?\b|Beverage|Brewing|Tobacco|Grocery|식품|음료|담배/i, '필수소비재'],
+  [/Motors?\b|Automotive|Apparel|Retail|Stores|Restaurant|Hotels?|Resorts|Homes\b|Fashion|자동차|의류|유통|호텔|레저/i, '소비재'],
+  [/Aerospace|Defense|Airlines|Logistics|Freight|Industries|Industrial|Machinery|Construction|Engineering|Transport|Shipping|항공|방산|물류|해운|기계|건설|조선|산업/i, '산업재'],
+];
+
+export function guessSectorFromName(name) {
+  const text = String(name ?? '');
+  for (const [pattern, sector] of NAME_SECTOR_RULES) {
+    if (pattern.test(text)) return sector;
+  }
+  return null;
+}
+
 // 개별 주식의 자산군: 은행·보험은 배당주, 리츠(부동산 투자회사)는 기타, 그 밖은 성장주
-// detail: 국내는 거래소 업종, 미국은 GICS 세부 업종 이름
+// detail: 국내는 거래소 업종, 미국은 GICS 세부 업종이나 나스닥 업종 이름
 export function stockAssetClass({ name = '', sector = '', detail = '' } = {}) {
-  if (/리츠|REIT/i.test(name) || /REIT/i.test(detail) || (sector === '부동산' && /리츠|투자회사/.test(detail))) return '기타';
-  if (/은행|저축기관|보험|Banks?\b|Insurance/i.test(detail)) return '배당주';
+  if (/리츠|REIT/i.test(name) || /REIT|Real Estate Investment Trusts/i.test(detail) || (sector === '부동산' && /리츠|투자회사/.test(detail))) return '기타';
+  if (/은행|저축기관|보험|Banks?\b|Insurance|Insurers|Savings Institutions/i.test(detail)) return '배당주';
   return '성장주';
 }
 

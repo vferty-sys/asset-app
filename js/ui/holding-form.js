@@ -3,13 +3,14 @@
 import {
   ACCOUNTS, ASSET_CLASSES, BROAD_ASSET_CLASSES, COUNTRY_OPTIONS, ETF_SPREADS, ETF_SPREAD_LABELS, SECTOR_OPTIONS,
 } from '../constants.js';
-import { guessCountry } from '../classify.js';
+import { classifyEtf, guessCountry, guessSectorFromName, stockAssetClass } from '../classify.js';
 import { COUNTRY_PRESETS, COUNTRY_WEIGHTS, GLOBAL_COUNTRY, presetMix } from '../country-weights.js';
 import { guessEtfSpread, guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
 import { findByTicker, loadStockList } from '../stock-list.js';
 import { parseNumberInput } from '../validate.js';
 import { el, clear, closeIcon, confirmDialog, openModal, showToast, uid } from '../dom.js';
 import { createField, numberInput, segmented, selectInput, textInput } from './form.js';
+import { josa } from '../format.js';
 import { attachStockPicker } from './stock-picker.js';
 
 const TYPE_OPTIONS = [['stock', '개별 주식'], ['etf', 'ETF']];
@@ -438,10 +439,88 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
     refreshSpread();
     const notes = ['목록에서 골라 티커·종류·통화·국가·섹터·자산군을 채웠어요. 맞는지 확인해 주세요.'];
     if (item.approx) notes.push('ETF의 국가·섹터 비율은 지수 구성을 바탕으로 한 대략값이에요. 정확한 비율은 운용사 홈페이지에서 볼 수 있어요.');
-    if (!item.countryMix) notes.push('국가는 직접 골라 주세요.');
-    if (!item.sectorMix) notes.push('섹터는 직접 골라 주세요.');
+    // 목록을 만들 때 자료가 없어 짐작한 값
+    if (item.guessed?.country) {
+      const country = Object.keys(item.countryMix ?? {})[0] ?? '';
+      notes.push(`국가는 자료가 없어 '${country}'${josa(country, '으로', '로')} 짐작했어요.`);
+    }
+    if (item.guessed?.sector) {
+      const sector = Object.keys(item.sectorMix ?? {})[0];
+      notes.push(sector === '기타' ? "섹터는 자료가 없어 '기타'로 뒀어요. 알면 바꿔 주세요." : `섹터는 회사 이름으로 '${sector}'${josa(sector, '이라고', '라고')} 짐작했어요.`);
+    }
+    if (!item.countryMix || !item.sectorMix) {
+      // 목록에도 없는 값은 거래소·이름으로 짐작해 채운다
+      const filled = fillUnknown();
+      if (filled.length === 0) {
+        if (!item.countryMix) notes.push('국가는 직접 골라 주세요.');
+        if (!item.sectorMix) notes.push('섹터는 직접 골라 주세요.');
+      } else notes.push(`${filled.join(', ')}. 맞는지 확인해 주세요.`);
+    }
     nameField.setHint(notes.join(' '));
   }
+  // ── 국가·섹터·자산군을 자동으로 못 채운 경우: 빈 칸만 거래소·이름으로 짐작해 채운다 ──
+  //  국가: 거래소(KRX → 한국, 미국 거래소 → 미국) / ETF는 이름. 모르면 개별 주식은 '기타', ETF는 '미분류'(글로벌)
+  //  섹터: 회사 이름의 낱말(Bank → 금융, Pharma → 헬스케어 …) / ETF는 이름. 모르면 '기타'
+  //  자산군: 섹터·이름으로 (은행·보험 → 배당주, 리츠 → 기타, 그 밖 → 성장주)
+  // 돌려주는 값: 채운 내용 설명 목록 (채운 게 없으면 빈 목록)
+  function fillUnknown() {
+    const name = nameField.control.value.trim();
+    const ticker = tickerInput.value;
+    const isEtf = typeControl.value === 'etf';
+    const etf = isEtf ? classifyEtf(name, { ticker }) : null;
+    const filled = [];
+    if (countryEditor.isBlank()) {
+      const guess = guessCountry({ name, ticker, type: typeControl.value });
+      if (guess) {
+        countryEditor.setValue(guess);
+        const country = Object.keys(guess.countryMix)[0];
+        filled.push(isEtf ? '국가는 이름으로 짐작했어요' : `국가는 거래소로 '${country}'${josa(country, '이라고', '라고')} 짐작했어요`);
+      } else if (isEtf) {
+        countryEditor.setValue({ countryMix: { [GLOBAL_COUNTRY]: 100 } });
+        filled.push("국가는 몰라서 '미분류'로 뒀어요");
+      } else {
+        countryEditor.setValue({ countryMix: { 기타: 100 } });
+        filled.push("국가는 몰라서 '기타'로 뒀어요");
+      }
+    }
+    let sector = null;
+    if (sectorEditor.isBlank()) {
+      if (etf?.sectorMix) {
+        sectorEditor.setRows(rowsOf(etf.sectorMix));
+        filled.push('섹터는 이름으로 짐작했어요');
+      } else {
+        sector = isEtf ? null : guessSectorFromName(name);
+        sectorEditor.setRows([{ name: sector ?? '기타', percent: '100' }]);
+        filled.push(sector ? `섹터는 회사 이름으로 '${sector}'${josa(sector, '이라고', '라고')} 짐작했어요` : "섹터는 몰라서 '기타'로 뒀어요");
+      }
+    }
+    if (!assetClassField.control.value) {
+      assetClassField.control.value = isEtf ? etf.assetClass : stockAssetClass({ name, sector: sector ?? '' });
+      const assetClass = assetClassField.control.value;
+      filled.push(`자산군은 '${assetClass}'${josa(assetClass, '으로', '로')} 짐작했어요`);
+      refreshSpread();
+    }
+    return filled;
+  }
+
+  // 목록에 없는 종목(티커를 직접 적음): 티커·이름을 다 적으면 빈 칸을 짐작해 채우고 알려 준다
+  let guessedFor = '';
+  function guessForUnlisted() {
+    const ticker = tickerInput.value;
+    const name = nameField.control.value.trim();
+    if (isEdit || !ticker || !name || findByTicker(stockItems, ticker)) return;
+    const key = `${ticker}|${name}|${typeControl.value}`;
+    if (key === guessedFor) return;
+    guessedFor = key;
+    // 티커를 적을 때 거래소로 채운 국가도 함께 알린다 (직접 고른 적이 없을 때)
+    const exchangeCountry = !countryTouched && typeControl.value === 'stock' && !countryEditor.isBlank()
+      ? countryEditor.getValue().countryRows[0]?.name
+      : null;
+    const filled = fillUnknown();
+    if (exchangeCountry) filled.unshift(`국가는 거래소로 '${exchangeCountry}'${josa(exchangeCountry, '이라고', '라고')} 짐작했어요`);
+    if (filled.length > 0) nameField.setHint(`목록에 없는 종목이라 ${filled.join(', ')}. 맞게 바꿔 주세요.`);
+  }
+
   const picker = attachStockPicker({ input: nameField.control, field: nameField.element, getItems: () => stockItems, onPick: applyStock });
   nameField.control.addEventListener('input', () => nameField.setHint(nameHint));
   loadStockList()
@@ -464,6 +543,8 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
     const item = findByTicker(stockItems, tickerInput.value);
     if (item) applyStock(item);
   });
+  tickerInput.addEventListener('change', guessForUnlisted);
+  nameField.control.addEventListener('change', guessForUnlisted);
 
   const views = {
     name: nameField,
