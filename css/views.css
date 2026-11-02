@@ -23,6 +23,69 @@
   letter-spacing: -0.02em;
 }
 
+.hero-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hero-hide,
+.trend-masked .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 가려 둔 총자산: 누르면 금액이 보인다 */
+.hero-reveal {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.hero-reveal:hover {
+  border-color: var(--primary);
+}
+
+.hero-mask {
+  font-size: clamp(1.75rem, 8vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.hero-reveal-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--primary);
+  font-size: 0.9375rem;
+  font-weight: 700;
+}
+
+.trend-masked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 12px;
+}
+
+.trend-masked p {
+  margin: 0;
+}
+
 /* 투자자산 : 기타 금융자산 — 8px 가는 막대, 글자 없이 옆 목록이 금액을 알려준다 */
 .split-bar {
   display: flex;
@@ -1529,6 +1592,211 @@
   .holding-cards {
     display: none;
   }
+}
+
+/* 히트맵 / 목록 고르기 (좁은 화면에서는 버튼 아래 한 줄) */
+.holdings-toolbar {
+  align-items: center;
+}
+
+.view-toggle {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 480px) {
+  .holdings-toolbar .spacer {
+    display: none;
+  }
+
+  .view-toggle {
+    flex-basis: 100%;
+  }
+}
+
+/* ── 보유 종목 히트맵 (칸 크기 = 평가금액, 색 = 수익률) ── */
+.heatmap-card {
+  display: grid;
+  gap: 12px;
+}
+
+.heatmap-card > p {
+  margin: 0;
+}
+
+.heatmap-wrap {
+  display: grid;
+  gap: 8px;
+}
+
+.heatmap {
+  position: relative;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 12px;
+  list-style: none;
+}
+
+.heat-cell {
+  position: absolute;
+  padding: 1.5px;
+}
+
+.heat-tile {
+  container-type: size;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.heat-tile:hover {
+  filter: brightness(0.94);
+}
+
+.heat-tile:focus-visible {
+  outline: 3px solid var(--text);
+  outline-offset: -3px;
+}
+
+.heat-tile.is-strong {
+  color: #fff;
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.35);
+}
+
+.heat-name,
+.heat-return,
+.heat-value {
+  max-width: 100%;
+  overflow: hidden;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.heat-return {
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+
+.heat-value {
+  font-size: 0.75rem;
+  opacity: 0.85;
+}
+
+/* 큰 칸은 글자를 크게 */
+@container (min-width: 140px) and (min-height: 90px) {
+  .heat-name {
+    font-size: 0.9375rem;
+  }
+
+  .heat-return {
+    font-size: 1.125rem;
+  }
+}
+
+/* 작은 칸은 글자를 줄인다: 금액 → 수익률 → 이름 순서로 숨김 */
+@container (max-width: 76px) or (max-height: 56px) {
+  .heat-value {
+    display: none;
+  }
+}
+
+@container (max-height: 34px) {
+  .heat-return {
+    display: none;
+  }
+}
+
+@container (max-width: 34px) or (max-height: 18px) {
+  .heat-name {
+    display: none;
+  }
+}
+
+.heat-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+
+.heat-scale {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.heat-scale-bar {
+  width: 120px;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--loss), var(--surface-2), var(--gain));
+}
+
+.heat-outside {
+  display: grid;
+  gap: 6px;
+}
+
+.heat-outside p {
+  margin: 0;
+}
+
+.heat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* 히트맵 칸을 눌렀을 때 창 */
+.heat-detail {
+  display: grid;
+  gap: 10px;
+}
+
+.heat-detail p {
+  margin: 0;
+}
+
+.heat-accounts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.heat-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
 }
 
 /* ── CSV 붙여넣기 ─────────────────────── */

@@ -1,16 +1,38 @@
-// 보유 종목 탭: 요약, 경고, 종목 목록(PC는 표, 모바일은 카드)
+// 보유 종목 탭: 요약, 경고, 종목 히트맵(칸 크기 = 평가금액, 색 = 수익률) 또는 목록(PC는 표, 모바일은 카드)
 
-import { BROAD_ASSET_CLASSES, ETF_SPREAD_LABELS } from '../constants.js';
+import { BROAD_ASSET_CLASSES, ETF_SPREAD_LABELS, STORAGE_PREFIX } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { holdingCountryMix } from '../country-weights.js';
 import { isMixComplete } from '../holding.js';
 import { findPriceIssues } from '../price.js';
 import { getMarket, subscribeMarket } from '../market.js';
-import { el, clear, helpTip } from '../dom.js';
+import { el, clear, helpTip, openModal } from '../dom.js';
 import { formatMoney, formatNumber, formatPercent, formatPrice, formatQuoteTime, pnlClass, EMPTY } from '../format.js';
 import { openHoldingForm } from './holding-form.js';
 import { openCsvImport } from './holdings-csv.js';
 import { cashCard } from './cash-form.js';
+import { segmented } from './form.js';
+import { HEATMAP_WIDE_QUERY, holdingsHeatmap } from './heatmap.js';
+
+// 종목을 히트맵으로 볼지 목록으로 볼지 (이 기기에만 기억)
+const VIEW_KEY = `${STORAGE_PREFIX}holdingsView`;
+const VIEW_OPTIONS = [['heatmap', '히트맵'], ['list', '목록']];
+
+function readView() {
+  try {
+    return globalThis.localStorage?.getItem(VIEW_KEY) === 'list' ? 'list' : 'heatmap';
+  } catch {
+    return 'heatmap';
+  }
+}
+
+function saveView(view) {
+  try {
+    globalThis.localStorage?.setItem(VIEW_KEY, view);
+  } catch {
+    // 저장할 수 없으면 이번에만 바꾼다
+  }
+}
 
 const HELP = {
   pnl: [
@@ -59,6 +81,41 @@ function byValueDesc(a, b) {
   return bv - av || a.holding.name.localeCompare(b.holding.name, 'ko');
 }
 
+// 히트맵 칸을 누르면: 그 종목의 금액·손익과 계좌별 보유 내역, 계좌마다 수정 버튼
+function openHeatDetail(item, { money, mode, openForm }) {
+  const [first] = item.rows;
+  const pnlText = item.pnl == null
+    ? EMPTY
+    : `${money(item.pnl, { signed: true })} (${formatPercent(item.returnRate, { signed: true })})`;
+  const facts = [
+    ['평가금액', money(item.value), null],
+    ['비중', formatPercent(item.weight), null],
+    ['평가손익', pnlText, pnlClass(item.pnl)],
+    ['현재가', formatPrice(first.price, first.holding.currency), null],
+  ];
+  let close = () => {};
+  const body = el('div', { class: 'heat-detail' },
+    el('p', { class: 'muted small' }, [item.ticker, etfLabel(first.holding)].filter(Boolean).join(' · '), ' ', priceBadge(first, mode)),
+    el('dl', { class: 'cost-list' }, facts.map(([label, value, tone]) => el('div', { class: 'cost-row' },
+      el('dt', { text: label }),
+      el('dd', { class: `num ${tone ?? ''}`.trim(), text: value })))),
+    el('p', { class: 'field-label', text: item.rows.length > 1 ? `계좌별 (${item.rows.length}개 계좌)` : '계좌' }),
+    el('ul', { class: 'heat-accounts' }, item.rows.map((row) => el('li', { class: 'heat-account' },
+      el('div', {},
+        el('p', { class: 'cell-name', text: row.holding.account }),
+        el('p', { class: 'cell-sub num', text: `${quantityText(row.holding)} · 평단가 ${formatPrice(row.holding.avgPrice, row.holding.currency)} · 평가 ${row.valueKRW == null ? EMPTY : money(row.valueKRW)}` })),
+      el('button', {
+        type: 'button', class: 'btn btn-small', text: '수정', 'aria-label': `${row.holding.account} 계좌 ${row.holding.name} 수정`,
+        onClick: () => {
+          close();
+          openForm(row.holding);
+        },
+      })))));
+  const closeButton = el('button', { type: 'button', class: 'btn', text: '닫기' });
+  ({ close } = openModal({ title: item.name, body, footer: [el('span', { class: 'spacer' }), closeButton] }));
+  closeButton.addEventListener('click', () => close());
+}
+
 function stat({ label, help, value, valueClass = '', sub, subClass = '', main = false }) {
   return el('div', { class: `stat${main ? ' stat-main' : ''}` },
     el('p', { class: 'stat-label' }, label, help ? helpTip(label, help) : null),
@@ -68,11 +125,28 @@ function stat({ label, help, value, valueClass = '', sub, subClass = '', main = 
 
 export function render(root, { getState, updateState, subscribe }) {
   const openForm = (holding) => openHoldingForm({ holding, getState, updateState });
+  let view = readView();
 
-  function toolbar() {
-    return el('div', { class: 'toolbar' },
+  function toolbar(withView = false) {
+    const viewControl = withView
+      ? segmented({
+        options: VIEW_OPTIONS,
+        value: view,
+        onChange: (next) => {
+          view = next;
+          saveView(next);
+          draw();
+          root.querySelector('.view-toggle input:checked')?.focus();
+        },
+      })
+      : null;
+    viewControl?.element.classList.add('view-toggle');
+    viewControl?.element.setAttribute('aria-label', '종목 보기 방식');
+    return el('div', { class: 'toolbar holdings-toolbar' },
       el('button', { type: 'button', class: 'btn btn-primary', text: '+ 종목 추가', onClick: () => openForm(null) }),
-      el('button', { type: 'button', class: 'btn', text: 'CSV 붙여넣기', onClick: () => openCsvImport({ getState, updateState }) }));
+      el('button', { type: 'button', class: 'btn', text: 'CSV 붙여넣기', onClick: () => openCsvImport({ getState, updateState }) }),
+      viewControl ? el('span', { class: 'spacer' }) : null,
+      viewControl?.element);
   }
 
   function draw() {
@@ -154,6 +228,35 @@ export function render(root, { getState, updateState, subscribe }) {
         el('ul', { class: 'notice-list' }, notices)));
     }
 
+    // ── 히트맵 보기 ──
+    if (view === 'heatmap') {
+      const heatmap = holdingsHeatmap({
+        rows: portfolio.rows,
+        money,
+        onSelect: (item) => openHeatDetail(item, { money, mode: market.mode, openForm }),
+      });
+      // 평가금액이 0이거나 모르는 종목(새로 살 종목·가격 없음·환율 없음)은 칸이 없으니 아래에 따로
+      const outside = rows.filter((row) => !(row.valueKRW > 0));
+      const outsideReason = (row) => {
+        if (row.valueKRW == null) return '환율 필요';
+        if (row.holding.quantity === 0) return '수량 0';
+        return '가격 없음';
+      };
+      root.append(el('section', { class: 'holdings-section', 'aria-label': '종목 히트맵' },
+        toolbar(true),
+        el('div', { class: 'card heatmap-card' },
+          heatmap ?? el('p', { class: 'muted', text: '평가금액이 있는 종목이 없어서 히트맵을 그릴 수 없어요.' }),
+          outside.length > 0
+            ? el('div', { class: 'heat-outside' },
+              el('p', { class: 'muted small', text: '히트맵에 없는 종목 (평가금액 0 또는 모름)' }),
+              el('ul', { class: 'heat-chips' }, outside.map((row) => el('li', {}, el('button', {
+                type: 'button', class: 'btn btn-small', onClick: () => openForm(row.holding),
+              }, `${row.holding.name} · ${outsideReason(row)}`)))))
+            : null,
+          el('p', { class: 'muted small', text: '칸을 누르면 금액·손익과 계좌별 보유 내역을 보고 고칠 수 있어요. 자세한 표는 "목록"에서 볼 수 있어요.' }))), cash());
+      return;
+    }
+
     const table = el('table', { class: 'table holdings-table' },
       el('thead', {}, el('tr', {},
         ['종목', '수량', '평단가', '현재가', '평가금액', '손익', '비중']
@@ -190,7 +293,7 @@ export function render(root, { getState, updateState, subscribe }) {
     }));
 
     root.append(el('section', { class: 'holdings-section', 'aria-label': '종목 목록' },
-      toolbar(),
+      toolbar(true),
       el('div', { class: 'card table-card holdings-table-wrap' }, el('div', { class: 'table-wrap' }, table)),
       cards), cash());
   }
@@ -198,8 +301,15 @@ export function render(root, { getState, updateState, subscribe }) {
   draw();
   const unsubscribeState = subscribe(draw);
   const unsubscribeMarket = subscribeMarket(draw);
+  // 휴대폰 ↔ PC 너비를 넘나들면 히트맵 모양(가로세로 비율)을 다시 계산한다
+  const wideQuery = globalThis.matchMedia?.(HEATMAP_WIDE_QUERY);
+  const redrawHeatmap = () => {
+    if (view === 'heatmap') draw();
+  };
+  wideQuery?.addEventListener('change', redrawHeatmap);
   return () => {
     unsubscribeState();
     unsubscribeMarket();
+    wideQuery?.removeEventListener('change', redrawHeatmap);
   };
 }
