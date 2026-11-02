@@ -13,6 +13,8 @@ export const STORAGE_KEYS = Object.freeze({
 });
 
 export const ACCOUNTS = Object.freeze(['일반', 'ISA', '연금저축', 'IRP', '기타']);
+// 미국 상장 주식·ETF를 직접 살 수 있는 계좌 (연금저축·IRP·ISA는 국내 상장 상품만 살 수 있다)
+export const OVERSEAS_ACCOUNTS = Object.freeze(['일반', '기타']);
 export const ASSET_CLASSES = Object.freeze(['성장주', '배당주', '채권', '현금성', '기타']);
 export const CURRENCIES = Object.freeze(['KRW', 'USD']);
 export const HOLDING_TYPES = Object.freeze(['stock', 'etf']);

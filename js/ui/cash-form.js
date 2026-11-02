@@ -1,14 +1,11 @@
 // 예수금(계좌에 남아 있는 현금): 보유 종목 화면의 예수금 칸과 입력 창.
 // 총자산·계좌 금액에 더하고, 리밸런싱할 때는 살 돈으로 쓴다 (../cash.js).
-import { ACCOUNTS } from '../constants.js';
+import { ACCOUNTS, OVERSEAS_ACCOUNTS } from '../constants.js';
 import { cashInKRW, normalizeCash } from '../cash.js';
 import { el, helpTip, openModal, showToast } from '../dom.js';
 import { formatNumber } from '../format.js';
 import { parseNumberInput } from '../validate.js';
 import { createField, numberInput } from './form.js';
-
-// 연금저축·IRP·ISA는 국내 상장 상품만 사서 달러 예수금이 없다
-const USD_ACCOUNTS = ['일반', '기타'];
 
 const HELP = [
   '증권 계좌에 남아 있는 현금이에요. 증권사 앱의 "예수금"(또는 "주문 가능 금액")을 보면 돼요.',
@@ -44,7 +41,8 @@ export function openCashForm({ getState, updateState }) {
   const current = getState().cash ?? {};
   const fields = ACCOUNTS.map((account) => {
     const krw = createField({ label: `${account} 원화`, control: numberInput({ value: current[account]?.KRW ?? '', placeholder: '0' }), suffix: '원' });
-    const usd = USD_ACCOUNTS.includes(account)
+    // 연금저축·IRP·ISA는 국내 상장 상품만 사서 달러 예수금이 없다
+    const usd = OVERSEAS_ACCOUNTS.includes(account)
       ? createField({ label: `${account} 달러`, control: numberInput({ value: current[account]?.USD ?? '', placeholder: '0' }), suffix: '달러' })
       : null;
     return { account, krw, usd };

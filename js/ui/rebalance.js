@@ -1,6 +1,6 @@
 // 리밸런싱 탭: 목표 비중 입력, 현재 vs 목표 비교, 계산 방법, 결과(매수·매도 목록, 남는 돈, 수수료·세금)
 
-import { ACCOUNTS, ASSET_CLASSES } from '../constants.js';
+import { ACCOUNTS, ASSET_CLASSES, OVERSEAS_ACCOUNTS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, holdingWeights } from '../calc/diversification.js';
 import { growthShareOf } from '../calc/allocation-presets.js';
@@ -8,11 +8,14 @@ import { cashInKRW } from '../cash.js';
 import { rebalance, targetKeys } from '../calc/rebalance.js';
 import { estimateCosts } from '../calc/tax.js';
 import { getMarket, subscribeMarket } from '../market.js';
+import { CLASS_EXAMPLES, examplesFor } from '../rebalance-examples.js';
+import { loadStockList } from '../stock-list.js';
 import { el, clear, helpTip, showToast, uid } from '../dom.js';
 import { formatMoney, formatNumber, formatPercent, formatPrice } from '../format.js';
 import { parseNumberInput } from '../validate.js';
 import { createField, numberInput, segmented, textInput } from './form.js';
 import { openAllocationPicker } from './allocation-picker.js';
+import { openHoldingForm } from './holding-form.js';
 
 const MODE_OPTIONS = [['assetClass', '자산군 단위'], ['ticker', '종목 단위']];
 const METHOD_OPTIONS = [['full', '전체 리밸런싱'], ['buyOnly', '매수만으로 맞추기']];
@@ -29,7 +32,7 @@ const HELP = {
     '전체 리밸런싱: 많은 쪽은 팔고 모자란 쪽은 사서 목표에 맞춰요.',
     '매수만으로 맞추기: 팔지 않고, 추가 투자금으로 모자란 쪽부터 사요. 세금·수수료가 적게 들어요.',
   ],
-  byAccount: '연금저축·IRP처럼 돈을 다른 계좌로 옮기기 어려울 때 켜세요. 같은 목표 비중을 계좌마다 따로 맞추고, 계좌 안에서만 사고팔아요. 예수금도 그 계좌의 것만 써요.',
+  byAccount: '연금저축·IRP처럼 돈을 다른 계좌로 옮기기 어려울 때 켜세요. 같은 목표 비중을 계좌마다 따로 맞추고, 계좌 안에서만 사고팔아요. 예수금도 그 계좌의 것만 써요. 계좌에 없는 자산군은 그 계좌에서 얼마어치 사야 하는지 보여 드려요.',
   cash: '보유 종목 화면에 적은 계좌별 예수금이에요. 지금 비중에는 넣지 않고, 리밸런싱할 때 살 돈으로 함께 써요.',
   realized: '올해 이미 팔아서 생긴 해외주식 이익이에요(손실이면 앞에 -). 해외주식은 한 해 이익을 모두 합쳐 250만원을 빼고 세금을 매겨서, 이 값을 넣으면 세금을 더 정확히 추정해요.',
 };
@@ -43,15 +46,6 @@ const options = {
   realizedOverseasGain: null,
   calculated: false,
   showAnyway: false,
-};
-
-// 목표는 있는데 보유 종목에 없는 자산군을 채우려면 어떤 종목이 필요한지 (예시일 뿐 추천이 아님)
-const CLASS_EXAMPLES = {
-  성장주: '주식이나 주식 ETF',
-  배당주: '배당주나 배당 ETF',
-  채권: '국고채·미국채 같은 채권 ETF',
-  현금성: 'CD금리·머니마켓·단기채 ETF',
-  기타: '금·원자재·리츠 ETF',
 };
 
 const pct = (ratio) => formatPercent(ratio);
@@ -114,24 +108,66 @@ function lineAccounts(line) {
   return `${line.accounts.join('·')}에 나눠 있음`;
 }
 
-function groupCard(group, { method, money, band, showAnyway, onShowAnyway }) {
+// 자산군 이름 (성장주는 시장 전체 ETF도 들어가는 '보통 주식' 칸이라 함께 적는다)
+const gapName = (name) => (name === '성장주' ? '성장주(주식)' : name);
+
+// 보유 종목이 없는 자산군: 살 금액, 예시 ETF('이걸로 사기'), 추가했지만 현재가가 없는 종목 안내
+function gapPanel(gap, { account, money, stockItems, onPick, onEditHolding }) {
+  const set = CLASS_EXAMPLES[gap.name];
+  const where = account ? `${account} 계좌에` : '보유 종목에';
+  const hasMoney = gap.amount > 0;
+  const panel = el('div', { class: 'gap-panel' },
+    el('p', { class: 'gap-panel-title' },
+      el('strong', { text: `${gapName(gap.name)} ${hasMoney ? `약 ${money(gap.amount)}어치 사야 해요` : `목표 약 ${money(gap.targetValue)}어치`}` }),
+      el('span', { class: 'muted small', text: ` · ${where} ${gap.name} 종목이 없어요` })));
+  // 팔 수량을 1주 단위로 내림하다 보니 살 돈이 생기지 않은 경우
+  if (!hasMoney && gap.targetValue > 0) {
+    panel.append(el('p', { class: 'small', text: '지금은 살 돈이 없어요. 파는 수량을 1주 단위로 내림하다 보니 판 돈이 생기지 않았어요. 예수금이나 추가 투자금을 넣으면 그 돈으로 살 수 있어요.' }));
+  }
+
+  if (gap.waiting?.length > 0) {
+    for (const item of gap.waiting) {
+      panel.append(el('div', { class: 'banner banner-warn gap-waiting' },
+        el('span', { text: `추가한 ${item.name}의 현재가를 몰라서 몇 주인지 계산하지 못했어요. 현재가를 적으면 바로 계산해 드려요. ` }),
+        el('button', { type: 'button', class: 'btn btn-small', text: '현재가 적기', onClick: () => onEditHolding(item.id) })));
+    }
+    return panel;
+  }
+
+  const examples = examplesFor(gap.name, account, stockItems);
+  if (set) panel.append(el('p', { class: 'muted small', text: `${set.label} 예시예요. ${set.note}` }));
+  if (examples.length > 0) {
+    panel.append(el('ul', { class: 'gap-examples' }, examples.map((example) => el('li', { class: 'gap-example' },
+      el('span', { class: 'gap-example-name' },
+        el('span', { class: 'cell-name', text: example.name }),
+        el('span', { class: 'cell-sub', text: `${example.ticker} · ${example.overseas ? `미국 상장${account ? '' : ' (일반 계좌에서)'}` : '국내 상장'}` })),
+      el('button', {
+        type: 'button', class: 'btn btn-small', text: '이걸로 사기', 'aria-label': `${example.name}(으)로 ${gap.name} 사기`, onClick: () => onPick(example, gap, account),
+      })))));
+  }
+  const notes = ['예시는 참고용이고 추천이 아니에요. 다른 종목을 사려면 보유 종목에서 수량 0으로 추가해도 돼요.'];
+  if (account && !OVERSEAS_ACCOUNTS.includes(account)) notes.push(`${account} 계좌는 국내 상장 상품만 살 수 있어서 국내 상장 ETF만 보여 드려요.`);
+  if (account === 'IRP' || account === '연금저축') notes.push('연금 계좌는 레버리지·인버스처럼 살 수 없는 상품이 있어요. 사기 전에 증권사 앱에서 확인해 주세요.');
+  panel.append(el('p', { class: 'muted small', text: notes.join(' ') }));
+  return panel;
+}
+
+function groupCard(group, { method, money, band, showAnyway, onShowAnyway, stockItems, onPick, onEditHolding }) {
   const title = group.account ? `${group.account} 계좌` : '전체 보유 종목';
   const summary = `지금 ${money(group.current)}${group.additional > 0 ? ` + 살 돈(예수금·추가 투자금) ${money(group.additional)}` : ''}`;
   const card = el('section', { class: 'card result-card' },
     el('div', { class: 'result-head' }, el('h2', { class: 'section-title', text: title }), el('span', { class: 'muted small', text: summary })));
+  const gaps = group.missing ?? [];
+  const missingNames = () => gaps.map((gap) => `${gap.name} ${pct(gap.target)}`).join(', ');
 
-  if (group.missing.length > 0) {
-    const names = group.missing.map((item) => `${item.name}(${pct(item.target)})`).join(', ');
-    card.append(el('p', { class: 'banner banner-warn' },
-      `${names} 목표가 있지만 ${group.account ? '이 계좌에' : '보유 종목에'} 살 종목이 없어서 나머지 자산군 비율로 맞췄어요. `,
-      '사려면 보유 종목에 그 자산군 종목을 추가하세요(수량 0으로 추가해도 돼요).'));
-  }
   if (group.noTargets) {
     card.append(el('p', { class: 'muted', text: '이 계좌의 종목에는 목표 비중이 없어서 그대로 둬요.' }));
     return card;
   }
   if (method === 'buyOnly' && group.additional <= 0) {
-    card.append(el('p', { class: 'muted', text: '이 계좌에는 예수금이나 추가 투자금이 없어서 그대로 둬요.' }));
+    card.append(el('p', { class: 'muted', text: gaps.length > 0
+      ? `이 계좌에는 예수금이나 추가 투자금이 없어서 그대로 둬요. (${missingNames()} 목표가 있지만 이 계좌에 종목이 없어요. 사려면 예수금이나 추가 투자금이 필요해요.)`
+      : '이 계좌에는 예수금이나 추가 투자금이 없어서 그대로 둬요.' }));
     return card;
   }
   if (method === 'full' && group.withinBand && group.additional <= 0 && !showAnyway) {
@@ -144,14 +180,30 @@ function groupCard(group, { method, money, band, showAnyway, onShowAnyway }) {
   }
 
   const order = { sell: 0, buy: 1, hold: 2 };
-  const lines = [...group.lines].sort((a, b) => order[a.action] - order[b.action] || Math.abs(b.amount) - Math.abs(a.amount));
+  // 종목이 없는 자산군도 '살 종목 고르기' 줄로 함께 보여 준다
+  const gapLines = gaps.map((gap) => ({ gap, action: gap.amount > 0 ? 'buy' : 'hold', amount: gap.amount }));
+  const lines = [...group.lines, ...gapLines].sort((a, b) => order[a.action] - order[b.action] || Math.abs(b.amount) - Math.abs(a.amount));
   const priceNote = (line) => (line.priceSource === 'avg' ? ' (현재가가 없어 평단가로 계산)' : '');
+  const gapSub = '보유 종목 없음 · 아래에서 살 종목을 골라요';
+  const gapRow = ({ gap, action }) => el('tr', { class: `is-gap${action === 'hold' ? ' is-hold' : ''}` },
+    el('td', {}, el('div', { class: 'cell-name', text: `${gapName(gap.name)} 살 종목 고르기` }), el('div', { class: 'cell-sub', text: gapSub })),
+    el('td', { class: 'num', text: pct(0) }),
+    el('td', { class: 'num' }, el('div', { text: pct(gap.target) }), el('div', { class: 'cell-sub', text: `매매 후 ${pct(gap.afterWeight)}` })),
+    el('td', {}, el('span', { class: `badge ${ACTION_BADGES[action]}`, text: ACTION_LABELS[action] })),
+    el('td', { class: 'num cell-sub', text: action === 'hold' ? '–' : '종목을 고르면 계산' }),
+    el('td', { class: 'num', text: action === 'hold' ? '–' : `약 ${money(gap.amount)}` }));
+  const gapCard = ({ gap, action }) => el('li', { class: `result-item is-gap${action === 'hold' ? ' is-hold' : ''}` },
+    el('div', { class: 'result-item-head' },
+      el('span', { class: 'cell-name', text: `${gapName(gap.name)} 살 종목 고르기` }),
+      el('span', { class: `badge ${ACTION_BADGES[action]}`, text: ACTION_LABELS[action] })),
+    action === 'hold' ? null : el('p', { class: 'result-item-trade num', text: `약 ${money(gap.amount)}어치 · 종목을 고르면 몇 주인지 계산해요` }),
+    el('p', { class: 'cell-sub', text: `현재 ${pct(0)} → 목표 ${pct(gap.target)} (매매 후 ${pct(gap.afterWeight)}) · ${gapSub}` }));
 
   const table = el('table', { class: 'table result-table' },
     el('thead', {}, el('tr', {},
       ['종목', '현재 비중', '목표 비중', '매수/매도', '수량', '예상 금액']
         .map((head, index) => el('th', { scope: 'col', class: index > 0 && index !== 3 ? 'num' : null, text: head })))),
-    el('tbody', {}, lines.map((line) => el('tr', { class: line.action === 'hold' ? 'is-hold' : null },
+    el('tbody', {}, lines.map((line) => (line.gap ? gapRow(line) : el('tr', { class: line.action === 'hold' ? 'is-hold' : null },
       el('td', {}, el('div', { class: 'cell-name', text: line.name }), el('div', { class: 'cell-sub', text: `${line.ticker} · ${lineAccounts(line)}` })),
       el('td', { class: 'num', text: pct(line.currentWeight) }),
       el('td', { class: 'num' }, el('div', { text: pct(line.targetWeight) }), el('div', { class: 'cell-sub', text: `매매 후 ${pct(line.afterWeight)}` })),
@@ -159,18 +211,24 @@ function groupCard(group, { method, money, band, showAnyway, onShowAnyway }) {
       el('td', { class: 'num' },
         el('div', { text: line.action === 'hold' ? '–' : quantityText(line.tradeQuantity) }),
         line.action === 'hold' ? null : el('div', { class: 'cell-sub', text: `× ${formatPrice(line.price, line.currency)}${priceNote(line)}` })),
-      el('td', { class: 'num', text: line.action === 'hold' ? '–' : money(Math.abs(line.amount)) })))));
+      el('td', { class: 'num', text: line.action === 'hold' ? '–' : money(Math.abs(line.amount)) }))))));
 
-  const cards = el('ul', { class: 'result-cards' }, lines.map((line) => el('li', { class: `result-item${line.action === 'hold' ? ' is-hold' : ''}` },
+  const cards = el('ul', { class: 'result-cards' }, lines.map((line) => (line.gap ? gapCard(line) : el('li', { class: `result-item${line.action === 'hold' ? ' is-hold' : ''}` },
     el('div', { class: 'result-item-head' },
       el('span', { class: 'cell-name', text: line.name }),
       el('span', { class: `badge ${ACTION_BADGES[line.action]}`, text: ACTION_LABELS[line.action] })),
     line.action === 'hold'
       ? null
       : el('p', { class: 'result-item-trade num', text: `${quantityText(line.tradeQuantity)} × ${formatPrice(line.price, line.currency)} = 약 ${money(Math.abs(line.amount))}${priceNote(line)}` }),
-    el('p', { class: 'cell-sub', text: `현재 ${pct(line.currentWeight)} → 목표 ${pct(line.targetWeight)} (매매 후 ${pct(line.afterWeight)}) · ${lineAccounts(line)}` }))));
+    el('p', { class: 'cell-sub', text: `현재 ${pct(line.currentWeight)} → 목표 ${pct(line.targetWeight)} (매매 후 ${pct(line.afterWeight)}) · ${lineAccounts(line)}` })))));
 
   card.append(el('div', { class: 'table-wrap result-table-wrap' }, table), cards);
+  if (gaps.length > 0) {
+    card.append(el('div', { class: 'gap-section' },
+      el('h3', { class: 'gap-heading', text: '살 종목 고르기' }),
+      el('p', { class: 'muted small', text: '목표에는 있는데 보유 종목이 없는 자산군이에요. 예시에서 "이걸로 사기"를 누르면 보유 종목에 수량 0으로 추가하고, 몇 주 사면 되는지 다시 계산해 드려요.' }),
+      gaps.map((gap) => gapPanel(gap, { account: group.account, money, stockItems, onPick, onEditHolding }))));
+  }
 
   const leftover = el('p', { class: 'leftover' }, `남는 돈: ${money(group.leftover)}`);
   if (group.suggestions.length > 0) {
@@ -203,13 +261,37 @@ function costsCard(costs, { money, hasOverseasSell }) {
       el('li', { text: '수수료·세금은 매매 금액과 따로 들어요.' })));
 }
 
+// 다시 그려야 하는 변화: 종목·예수금·설정 (목표 비중 입력은 입력 칸 초점을 지키려고 다시 그리지 않는다)
+const viewKey = (state) => JSON.stringify([state.holdings, state.cash, state.settings]);
+
+// 전체 계산에서 고른 예시를 넣을 계좌: 평가금액이 가장 큰 계좌 (미국 상장 ETF는 해외 주식을 살 수 있는 계좌)
+function defaultAccount(rows, overseas) {
+  const totals = new Map();
+  for (const row of rows) {
+    const { account } = row.holding;
+    if (overseas && !OVERSEAS_ACCOUNTS.includes(account)) continue;
+    totals.set(account, (totals.get(account) ?? 0) + (row.valueKRW ?? 0));
+  }
+  const [best] = [...totals.entries()].sort((a, b) => b[1] - a[1]);
+  return best?.[0] ?? '일반';
+}
+
 export function render(root, { getState, updateState, subscribe }) {
   let lastKey = '';
+  // 예시 ETF의 이름을 종목 목록의 최신 이름으로 (받기 전에는 적어 둔 이름)
+  let stockItems = null;
+  let refreshResults = null;
+  loadStockList()
+    .then((items) => {
+      stockItems = items;
+      refreshResults?.();
+    })
+    .catch(() => {});
 
   function draw() {
     clear(root);
     const state = getState();
-    lastKey = JSON.stringify([state.holdings, state.cash, state.settings]);
+    lastKey = viewKey(state);
     const { settings } = state;
     const band = settings.rebalanceBand;
     const money = (value) => formatMoney(value, { unit: settings.displayUnit });
@@ -254,7 +336,7 @@ export function render(root, { getState, updateState, subscribe }) {
       if (mode !== 'assetClass') return;
       const missing = items.filter(([key]) => draft[key] > 0 && !state.holdings.some((holding) => holding.assetClass === key));
       missingNote.hidden = missing.length === 0;
-      missingNote.textContent = missing.length === 0 ? '' : `${missing.map(([key]) => `${key} ${formatNumber(draft[key], { maximumFractionDigits: 1 })}%`).join(', ')}를 채우려면 보유 종목에 그 자산군 종목이 있어야 해요 (${missing.map(([key]) => `${key}: ${CLASS_EXAMPLES[key]}`).join(' / ')}). 수량 0으로 추가해도 몇 주 살지 계산해 드려요.`;
+      missingNote.textContent = missing.length === 0 ? '' : `${missing.map(([key]) => `${key} ${formatNumber(draft[key], { maximumFractionDigits: 1 })}%`).join(', ')}: 보유 종목에 없는 자산군이에요. 계산하면 얼마어치 사야 하는지 알려 드리고, 예시 ETF에서 골라 바로 추가할 수 있어요.`;
     };
     const refreshDraft = () => {
       refreshMissing();
@@ -345,7 +427,7 @@ export function render(root, { getState, updateState, subscribe }) {
       el('h2', { class: 'section-title', text: '목표 비중' }),
       modeControl.element,
       el('p', { class: 'section-desc', text: mode === 'assetClass'
-        ? '자산군마다 목표를 정해요. 자산군 안의 종목들은 지금 비율대로 나눠요. 어떻게 정할지 모르겠으면 "추천 비율에서 고르기"로 시작해 보세요.'
+        ? '자산군마다 목표를 정해요. 자산군 안의 종목들은 지금 비율대로 나눠요. 보유 종목이 없는 자산군은 얼마어치 사야 하는지와 예시 ETF를 보여 드려요. 어떻게 정할지 모르겠으면 "추천 비율에서 고르기"로 시작해 보세요.'
         : '종목마다 목표를 정해요. 목표를 비워 두거나 0%로 두면 그 종목은 모두 팔아요. 새로 살 종목은 보유 종목에 수량 0으로 추가하세요. 추천 비율은 "자산군 단위"에서 고를 수 있어요.' }),
       presetButton ? el('div', { class: 'toolbar' }, presetButton) : null,
       targetRows,
@@ -469,7 +551,10 @@ export function render(root, { getState, updateState, subscribe }) {
         results.append(el('p', { class: 'banner banner-warn', role: 'alert', text: messages[result.error] }));
         return;
       }
+      // 살 종목 고르기 자리에서 안내하는 종목(현재가 없음)은 위에 다시 적지 않는다
+      const waitingIds = new Set(result.groups.flatMap((group) => (group.missing ?? []).flatMap((gap) => gap.waiting ?? []).map((item) => item.id)));
       for (const item of result.excluded) {
+        if (waitingIds.has(item.id)) continue;
         results.append(el('p', { class: 'banner banner-warn', text: `${item.name}: ${item.reason}` }));
       }
       for (const group of result.groups) {
@@ -482,6 +567,12 @@ export function render(root, { getState, updateState, subscribe }) {
             options.showAnyway = true;
             showResults();
           },
+          stockItems,
+          onPick: pickExample,
+          onEditHolding: (id) => {
+            const holding = getState().holdings.find((item) => item.id === id);
+            if (holding) openHoldingForm({ holding, getState, updateState });
+          },
         }));
       }
       const lines = result.groups.flatMap((group) => group.lines);
@@ -489,6 +580,30 @@ export function render(root, { getState, updateState, subscribe }) {
         const costs = estimateCosts(lines, settings, { realizedOverseasGain: options.realizedOverseasGain ?? 0 });
         results.append(costsCard(costs, { money, hasOverseasSell: costs.overseasSells > 0 }));
       }
+    }
+
+    // 예시 ETF를 수량 0으로 보유 종목에 추가한다 (저장하면 종목이 바뀌어 화면을 다시 그리면서 몇 주인지 다시 계산한다)
+    function pickExample(example, gap, account) {
+      const target = account ?? defaultAccount(portfolio.rows, example.overseas);
+      const quote = market.prices?.[example.ticker];
+      const hasSheetPrice = market.mode === 'sheet' && quote?.price > 0;
+      const priceNote = hasSheetPrice
+        ? ''
+        : market.mode === 'sheet'
+          ? ` 구글 시트 A열에 ${example.ticker}를 추가하면 현재가가 들어와요. 지금 바로 계산하려면 아래 "현재가"에 증권사 앱에서 본 가격을 적어 주세요.`
+          : ' 아래 "현재가"에 증권사 앱에서 본 지금 가격을 적어 주세요. 그래야 몇 주인지 계산할 수 있어요.';
+      openHoldingForm({
+        prefill: {
+          ticker: example.ticker,
+          name: example.name,
+          currency: example.currency,
+          assetClass: gap.name,
+          account: target,
+          note: `수량 0으로 추가해요. 저장하면 리밸런싱에서 몇 주 사면 되는지 바로 계산해 드려요. 산 다음에는 수량과 평단가를 고쳐 주세요.${priceNote}`,
+        },
+        getState,
+        updateState,
+      });
     }
 
     calcButton.addEventListener('click', () => {
@@ -501,13 +616,16 @@ export function render(root, { getState, updateState, subscribe }) {
     });
 
     refreshDraft();
-    if (options.calculated && !calcButton.disabled) showResults();
+    refreshResults = () => {
+      if (options.calculated && !calcButton.disabled) showResults();
+    };
+    refreshResults();
   }
 
   draw();
   const unsubscribeState = subscribe((state) => {
-    // 목표 비중을 입력할 때마다 화면을 다시 그리면 입력 칸 초점이 사라지므로, 종목·설정이 바뀔 때만 다시 그린다.
-    if (JSON.stringify([state.holdings, state.settings]) !== lastKey) draw();
+    // 목표 비중을 입력할 때마다 화면을 다시 그리면 입력 칸 초점이 사라지므로, 종목·예수금·설정이 바뀔 때만 다시 그린다.
+    if (viewKey(state) !== lastKey) draw();
   });
   const unsubscribeMarket = subscribeMarket(draw);
   return () => {
