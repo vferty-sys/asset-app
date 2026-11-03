@@ -16,10 +16,11 @@ export function formatSavedAt(iso) {
 }
 
 function describe(data) {
-  return `보유 종목 ${data.holdings.length}개, 공제회·예적금 ${data.otherAssets.length}개, 연금 ${data.pensions.length}개`;
+  const extra = [data.realEstate?.length ? `부동산 ${data.realEstate.length}개` : null, data.loans?.length ? `대출 ${data.loans.length}개` : null].filter(Boolean);
+  return [`보유 종목 ${data.holdings.length}개, 공제회·예적금 ${data.otherAssets.length}개, 연금 ${data.pensions.length}개`, ...extra].join(', ');
 }
 
-const hasData = (data) => data.holdings.length + data.otherAssets.length + data.pensions.length + data.snapshots.length > 0;
+const hasData = (data) => data.holdings.length + data.otherAssets.length + data.pensions.length + (data.realEstate?.length ?? 0) + (data.loans?.length ?? 0) + data.snapshots.length > 0;
 
 function passwordInput(autocomplete) {
   const input = textInput({ type: 'password', maxlength: 100 });

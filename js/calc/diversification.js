@@ -41,13 +41,13 @@ export function toBreakdown(entries) {
 // cashByAccount: 계좌별 예수금(원화) — 자산군(현금성)·계좌 집계에만 더한다.
 // 국가·섹터는 항상 주식만 집계한다.
 export function analyzeDiversification(rows, {
-  includeOthers = false, otherAssets = [], pensions = [], cashByAccount = {},
+  includeOthers = false, otherAssets = [], pensions = [], cashByAccount = {}, nowMonth = null,
 } = {}) {
   const valued = (rows ?? []).filter((row) => row.valueKRW > 0);
   const stockTotal = valued.reduce((sum, row) => sum + row.valueKRW, 0);
   const cash = Object.entries(cashByAccount).filter(([, amount]) => amount > 0);
   const cashTotal = cash.reduce((sum, [, amount]) => sum + amount, 0);
-  const others = includeOthers ? otherFinancialAssets({ otherAssets, pensions }) : { deposits: 0, pensionBalance: 0, total: 0 };
+  const others = includeOthers ? otherFinancialAssets({ otherAssets, pensions, nowMonth }) : { deposits: 0, pensionBalance: 0, total: 0 };
   return {
     stockTotal,
     cashTotal,

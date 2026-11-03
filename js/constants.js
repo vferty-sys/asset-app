@@ -40,6 +40,17 @@ export const SECTOR_OPTIONS = Object.freeze([
   '에너지', '소재', '유틸리티', '부동산', '채권', '현금성', '기타',
 ]);
 export const OTHER_ASSET_TYPES = Object.freeze(['공제회', '예금', '적금', '기타']);
+// 대출: 종류(이름표)와 갚는 방식. 갚는 방식마다 남은 원금·원금 몫·이자 몫 계산이 다르다 (calc/loan.js).
+export const LOAN_TYPES = Object.freeze(['주택담보대출', '전세자금대출', '신용대출', '자동차대출', '기타']);
+export const LOAN_METHODS = Object.freeze(['equalPayment', 'equalPrincipal', 'bullet']);
+export const LOAN_METHOD_LABELS = Object.freeze({ equalPayment: '원리금균등', equalPrincipal: '원금균등', bullet: '만기일시' });
+export const LOAN_METHOD_HELP = Object.freeze({
+  equalPayment: '매달 같은 금액(원금 + 이자)을 내요. 처음에는 이자 몫이 크고, 갈수록 원금 몫이 커져요.',
+  equalPrincipal: '원금을 똑같이 나눠 내요. 이자는 남은 원금에 붙어서 내는 돈이 점점 줄어요.',
+  bullet: '매달 이자만 내다가, 만기에 원금을 한꺼번에 갚아요.',
+});
+// 부동산: 시세는 직접 적는다 (1년에 한두 번 고치기)
+export const REAL_ESTATE_KINDS = Object.freeze(['아파트', '빌라·주택', '오피스텔', '토지·상가', '기타']);
 export const COMPOUNDING_TYPES = Object.freeze(['월복리', '연복리', '단리']);
 // 공제회·예적금 이자에 붙는 세금 기본값(%). 예금·적금은 이자소득세 14% + 지방소득세 1.4%.
 // 공제회 급여는 납입 기간에 따른 공제로 세금이 훨씬 적어서 3%로 어림잡는다. 항목마다 고칠 수 있다.

@@ -94,6 +94,16 @@ export function createSampleData(now = new Date()) {
         contributionEndDate: '2040-01', expectedReturns: { low: 2, base: 3.5, high: 5 }, updatedAt: todayString(now), memo: '',
       },
     ],
+    // 순자산 예시: 집(직접 적은 시세)과 주택담보대출(원리금균등)
+    realEstate: [
+      { id: 'r1', name: '우리 집', kind: '아파트', value: 650_000_000, baseDate: todayString(now), memo: '', updatedAt: todayString(now) },
+    ],
+    loans: [
+      {
+        id: 'l1', name: 'OO은행 주택담보대출', type: '주택담보대출', method: 'equalPayment', balance: 230_000_000, rate: 4.2,
+        baseDate: todayString(now), monthlyPayment: 1_250_000, maturity: null, payDay: 25, memo: '', updatedAt: todayString(now),
+      },
+    ],
     targets: TARGETS,
     meta: { ...base.meta, onboardingDone: true, sample: true },
   };

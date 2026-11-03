@@ -131,7 +131,7 @@
 
 @media (min-width: 768px) {
   .kpi-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   }
 }
 
@@ -2393,6 +2393,59 @@
 
 .cash-note {
   margin: 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface-2);
+}
+
+/* ── 순자산 (대시보드) ── */
+.dash-networth {
+  display: grid;
+  gap: 10px;
+}
+
+.networth-value {
+  font-size: clamp(1.75rem, 8vw, 2.25rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.networth-rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.networth-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.networth-row dt {
+  display: inline-flex;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.networth-row dd {
+  margin: 0;
+  font-weight: 700;
+}
+
+.networth-sign {
+  display: inline-block;
+  width: 1em;
+  text-align: center;
+  font-weight: 700;
+}
+
+/* ── 대출 (기타 자산) ── */
+.loan-summary {
+  margin: 0 0 4px;
   padding: 10px 12px;
   border-radius: 10px;
   background: var(--surface-2);

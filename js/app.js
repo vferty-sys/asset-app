@@ -217,7 +217,7 @@ function pickSessionStorage() {
 // 기기 연동을 켠 기기(비밀번호를 기억하지 않아 데이터가 비어 있을 수 있음)에서는 띄우지 않는다.
 function maybeShowGuide() {
   const state = getState();
-  const empty = state.holdings.length + state.otherAssets.length + state.pensions.length === 0;
+  const empty = state.holdings.length + state.otherAssets.length + state.pensions.length + state.realEstate.length + state.loans.length === 0;
   if (!state.meta.onboardingDone && empty && isPersistEnabled() && !context.sync?.config) openGuide(context);
 }
 

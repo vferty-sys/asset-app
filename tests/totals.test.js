@@ -63,3 +63,31 @@ test('예수금: 투자자산과 현금성, 계좌별 금액(연금 계좌 연�
   assert.deepEqual(valueByAccount(rows, { IRP: 300_000, 연금저축: 100_000 }), { 일반: 6_000_000, IRP: 2_300_000, 연금저축: 100_000 });
   assert.deepEqual(valueByAccount(rows), { 일반: 6_000_000, IRP: 2_000_000 });
 });
+
+test('공제회·예적금 오늘 금액: 기준일 금액에서 월 납입액·기준 이율로 쌓아 추정 (nowMonth를 줄 때만)', async () => {
+  const { estimateOtherAssetNow } = await import('../js/calc/projection.js');
+  const { monthIndexOf } = await import('../js/dates.js');
+  const asset = {
+    balance: 10_000_000, accruedInterest: 0, baseDate: '2025-11-30', monthlyContribution: 500_000, contributionGrowthRate: 0,
+    interestRates: { low: 0, base: 0, high: 0 }, compounding: '월복리', contributionEndDate: '2040-12', payoutDate: '2041-01',
+  };
+  const now = monthIndexOf(2026, 11);
+  // 이자 0%면 12달 × 50만원 = 600만원이 더해진다
+  assert.deepEqual(estimateOtherAssetNow(asset, now), { balance: 16_000_000, baseBalance: 10_000_000, months: 12, estimated: true });
+  const withRate = estimateOtherAssetNow({ ...asset, interestRates: { low: 4, base: 4, high: 4 } }, now);
+  assert.ok(withRate.balance > 16_000_000 && withRate.balance < 16_700_000, `${withRate.balance}`);
+  // 기준일이 이번 달이면 그대로, 수령 달이 지났으면 그때 금액 그대로
+  assert.equal(estimateOtherAssetNow({ ...asset, baseDate: '2026-11-02' }, now).estimated, false);
+  const paidOut = estimateOtherAssetNow({ ...asset, payoutDate: '2026-05' }, now);
+  assert.equal(paidOut.balance, 13_000_000, '2025-12 ~ 2026-05 여섯 번만 넣음');
+  // 총자산 계산: nowMonth를 주면 추정 금액, 안 주면 적어 둔 금액
+  assert.equal(otherFinancialAssets({ otherAssets: [asset] }).deposits, 10_000_000);
+  assert.equal(otherFinancialAssets({ otherAssets: [asset], nowMonth: now }).deposits, 16_000_000);
+  assert.equal(assetSummary({ otherAssets: [asset], nowMonth: now }).others, 16_000_000);
+});
+
+test('순자산 = 금융자산 + 부동산 − 대출', async () => {
+  const { netWorth } = await import('../js/calc/totals.js');
+  assert.deepEqual(netWorth({ financial: 100, realEstate: 600, loans: 300 }), { financial: 100, realEstate: 600, loans: 300, total: 400 });
+  assert.equal(netWorth().total, 0);
+});

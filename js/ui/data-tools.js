@@ -15,11 +15,12 @@ const BACKUP_FILE_PREFIX = 'asset-app-backup-';
 const MAX_BACKUP_BYTES = 5 * 1024 * 1024;
 
 function hasData(state) {
-  return state.holdings.length + state.otherAssets.length + state.pensions.length + state.snapshots.length > 0;
+  return state.holdings.length + state.otherAssets.length + state.pensions.length + (state.realEstate?.length ?? 0) + (state.loans?.length ?? 0) + state.snapshots.length > 0;
 }
 
 function describe(data) {
-  return `보유 종목 ${data.holdings.length}개, 공제회·예적금 ${data.otherAssets.length}개, 연금 ${data.pensions.length}개, 월별 기록 ${data.snapshots.length}개`;
+  const extra = [data.realEstate?.length ? `부동산 ${data.realEstate.length}개` : null, data.loans?.length ? `대출 ${data.loans.length}개` : null].filter(Boolean);
+  return [`보유 종목 ${data.holdings.length}개, 공제회·예적금 ${data.otherAssets.length}개, 연금 ${data.pensions.length}개`, ...extra, `월별 기록 ${data.snapshots.length}개`].join(', ');
 }
 
 function download(text, filename) {

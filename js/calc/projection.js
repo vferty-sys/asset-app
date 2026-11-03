@@ -123,6 +123,29 @@ export function projectOtherAsset(asset, { nowMonth, endMonth }) {
   return result;
 }
 
+// 공제회·예적금의 오늘(nowMonth) 추정 금액: 기준일 금액에서 기준 이율·월 납입액으로 한 달씩 쌓는다 (세전).
+// 기준일이 이번 달이거나 미래면 적어 둔 금액 그대로. 수령 달이 지났으면 받을 때 금액 그대로 (받은 돈을 들고 있다고 봄).
+//  돌려주는 값: { balance, baseBalance, months: 기준일부터 지난 달 수, estimated }
+export function estimateOtherAssetNow(asset, nowMonth) {
+  const baseBalance = asset.balance > 0 ? asset.balance : 0;
+  const startMonth = parseMonth(asset.baseDate);
+  if (startMonth == null || nowMonth == null || nowMonth <= startMonth) return { balance: baseBalance, baseBalance, months: 0, estimated: false };
+  const points = simulateSavings({
+    startMonth,
+    endMonth: nowMonth,
+    balance: baseBalance,
+    accruedInterest: asset.accruedInterest ?? 0,
+    monthlyContribution: asset.monthlyContribution ?? 0,
+    growthRate: asset.contributionGrowthRate ?? 0,
+    annualRate: asset.interestRates?.base ?? 0,
+    compounding: asset.compounding,
+    contributionEndMonth: parseMonth(asset.contributionEndDate),
+    payoutMonth: parseMonth(asset.payoutDate),
+  });
+  const point = valueAt(points, nowMonth);
+  return { balance: point.balance, baseBalance, months: nowMonth - startMonth, estimated: true };
+}
+
 // ── 주식 ─────────────────────────────────────
 // 지금 평가금액에 매달 투자액을 더하고, 기대 수익률로 월복리
 export function projectStocks({ value, monthlyInvestment = 0, annualReturn, months }) {
