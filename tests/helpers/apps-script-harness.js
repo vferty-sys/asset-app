@@ -123,7 +123,7 @@ export class FakeSheet {
 
 // options.properties: 스크립트 속성 { 이름: 값 }, options.fetch(url) → { status, body }: 바깥 요청(UrlFetchApp) 흉내
 export function load(sheets, { properties = {}, fetch = null } = {}) {
-  const calls = { flush: 0, sleep: [], locks: 0, fetches: [], logs: [] };
+  const calls = { flush: 0, sleep: [], locks: 0, fetches: [], logs: [], scopeChecks: 0 };
   const props = { ...properties };
   const cacheStore = new Map();
   const spreadsheet = {
@@ -166,6 +166,7 @@ export function load(sheets, { properties = {}, fetch = null } = {}) {
       }),
     },
     Logger: { log: (message) => calls.logs.push(String(message)) },
+    ScriptApp: { AuthMode: { FULL: 'FULL' }, requireAllScopes: () => { calls.scopeChecks += 1; } },
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput: (text) => ({ setMimeType: (mimeType) => ({ text, mimeType }) }),

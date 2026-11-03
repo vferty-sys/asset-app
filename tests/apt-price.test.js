@@ -33,8 +33,10 @@ test('오류: 인증키 없음·만료·예전 시트 코드·시트 미연결�
   // 원인을 찾을 수 있게 시트 코드가 알려 준 이유를 함께 보여 준다
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ aptError: 'api', message: 'NO_OPENAPI_SERVICE_ERROR' }) }),
     (error) => error.code === 'api' && error.message.includes('(이유: NO_OPENAPI_SERVICE_ERROR)'));
-  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: 'Exception: 권한이 없습니다: UrlFetchApp' }) }),
-    (error) => error.code === 'api' && error.message.includes('UrlFetchApp'));
+  // 시트 코드에 바깥 연결 권한이 없으면 영어 오류 대신 고치는 방법을 안내한다
+  const denied = 'UrlFetchApp.fetchAll을(를) 호출할 수 있는 권한이 없습니다. 필요한 권한은 https://www.googleapis.com/auth/script.external_request입니다.';
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: denied }) }),
+    (error) => error.code === 'permission' && /checkRealEstateKey/.test(error.message) && !error.message.includes('이유:'));
   // 구글 오류 문구에 요청 주소가 섞여 와도 인증키는 화면에 나오지 않는다
   const leaky = 'Exception: Address unavailable: https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=SECRET123%2Babc&LAWD_CD=11680';
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: leaky }) }),

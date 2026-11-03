@@ -22,14 +22,18 @@ export const APT_ERROR_MESSAGES = Object.freeze({
   expired: '인증키 활용 기간이 끝났어요. 공공데이터포털 마이페이지에서 연장 신청해 주세요.',
   limit: '오늘 쓸 수 있는 조회 횟수를 다 썼어요. 내일 다시 해 보세요.',
   'bad-request': '지역·단지·전용면적을 다시 골라 주세요.',
+  permission: '시트 코드에 "외부 서비스에 연결" 권한이 없어요. PC에서 Apps Script 편집기를 열고 checkRealEstateKey를 실행해 권한을 모두 허용한 뒤, 새 버전으로 다시 배포해 주세요. (연결 가이드의 "아파트 실거래가" 참고)',
   api: '공공데이터에서 실거래가를 받지 못했어요. 잠시 뒤 다시 해 보세요.',
   network: '시트에 연결하지 못했어요. 인터넷 연결을 확인해 주세요.',
   timeout: '실거래가를 받는 데 시간이 너무 오래 걸려요. 잠시 뒤 다시 해 보세요.',
 });
 
 // 시트 코드가 알려 준 자세한 이유를 문구 뒤에 붙인다 (원인을 찾기 쉽게). 인증키는 시트 코드가 보내지 않는다.
-const NO_DETAIL = ['no-feature', 'no-sheet', 'no-key', 'network', 'timeout'];
-const fail = (code, detail = '') => {
+const NO_DETAIL = ['no-feature', 'no-sheet', 'no-key', 'network', 'timeout', 'permission'];
+// 구글이 "UrlFetchApp … script.external_request 권한이 없다"고 하면 권한 안내로 바꿔 보여 준다
+const PERMISSION_ERROR = /script\.external_request|UrlFetchApp/i;
+const fail = (rawCode, detail = '') => {
+  const code = PERMISSION_ERROR.test(String(detail ?? '')) ? 'permission' : rawCode;
   const base = APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api;
   // 구글 오류 문구에 요청 주소(인증키가 들어 있음)가 섞여 올 수 있어서, 주소의 ? 뒤와 serviceKey 값은 지운다
   const reason = String(detail ?? '')

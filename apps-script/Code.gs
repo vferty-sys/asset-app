@@ -134,6 +134,7 @@ function onEdit(e) {
 
 // 처음 한 번 실행: '시세' 탭과 제목 줄, 환율 줄을 만든다. (종목 줄은 앱이 시세를 받을 때 알아서 넣는다)
 function setupSheet() {
+  requireAllScopes_();
   const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
   const sheet = spreadsheet.getSheetByName(SHEET_NAME) || spreadsheet.insertSheet(SHEET_NAME, 0);
   sheet.getRange(1, 1, 1, 3).setValues([HEADER]).setFontWeight('bold');
@@ -674,6 +675,7 @@ function aptPrice_(params) {
 
 // 편집기에서 한 번 실행: 외부 연결 권한을 허용하고, 인증키로 서울 종로구 이번 달 자료를 받아 본다.
 function checkRealEstateKey() {
+  requireAllScopes_();
   try {
     const data = molitTrades_('11110', aptMonths_(1));
     const count = Object.keys(data).reduce((sum, ym) => sum + data[ym].length, 0);
@@ -685,6 +687,16 @@ function checkRealEstateKey() {
       expired: '인증키 활용 기간이 끝났어요. 공공데이터포털 마이페이지에서 연장 신청해 주세요.',
       limit: '오늘 쓸 수 있는 횟수를 다 썼어요. 내일 다시 해 보세요.',
     };
-    Logger.log(`${messages[error.aptError] || '실거래가를 받지 못했어요.'} (${error.message})`);
+    const text = safeMessage_(error && error.message);
+    const message = /external_request|UrlFetchApp/.test(text)
+      ? '시트 코드에 "외부 서비스에 연결" 권한이 없어요. 다시 실행해서 권한 화면이 뜨면 "모두 선택"을 체크하고 허용해 주세요.'
+      : messages[error.aptError] || '실거래가를 받지 못했어요.';
+    Logger.log(`${message} (${text})`);
   }
+}
+
+// 편집기에서 실행할 때, 권한 화면에서 일부 권한(예: 외부 서비스에 연결)을 빼고 허용했으면 빠진 권한을 다시 물어본다.
+// (구글은 권한을 하나씩 골라 허용할 수 있게 바뀌었다. 빠진 권한이 없으면 아무 일도 하지 않는다)
+function requireAllScopes_() {
+  if (typeof ScriptApp !== 'undefined' && ScriptApp.requireAllScopes) ScriptApp.requireAllScopes(ScriptApp.AuthMode.FULL);
 }

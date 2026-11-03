@@ -109,6 +109,18 @@ test('공공데이터 오류: 키 틀림·만료·사용량 초과를 코드로 
   assert.equal(run(answer(xml([])), { action: 'apt-complexes', lawd: '1168' }).aptError, 'bad-request');
 });
 
+test('checkRealEstateKey·setupSheet는 빠진 권한을 다시 묻고, 바깥 연결 권한이 없으면 고치는 방법을 알려 준다', () => {
+  const denied = load(sheets(), {
+    properties: { MOLIT_API_KEY: 'k' },
+    fetch: () => { throw new Error('UrlFetchApp.fetchAll을(를) 호출할 수 있는 권한이 없습니다. 필요한 권한은 https://www.googleapis.com/auth/script.external_request입니다.'); },
+  });
+  denied.context.checkRealEstateKey();
+  assert.equal(denied.calls.scopeChecks, 1);
+  assert.match(denied.calls.logs.at(-1), /외부 서비스에 연결.*모두 선택/);
+  denied.context.setupSheet();
+  assert.equal(denied.calls.scopeChecks, 2);
+});
+
 test('구글 오류 문구에 요청 주소가 섞여도 인증키는 앱으로 보내지 않는다', () => {
   const { context } = load(sheets(), {
     properties: { MOLIT_API_KEY: 'SECRET123' },
