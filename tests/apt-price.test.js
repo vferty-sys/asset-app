@@ -13,7 +13,10 @@ test('표시: 최근 몇 개월 몇 건 평균과 기간, 전용면적과 평', 
   assert.equal(aptLabel({ average: 1, months: 3, count: 4, from: '202609', to: '202611' }), '최근 3개월 거래 4건 평균 (2026년 9월~11월)');
   assert.equal(aptLabel({ average: 1, months: 12, count: 1, from: '202512', to: '202611' }), '최근 12개월 거래 1건 평균 (2025년 12월~2026년 11월)');
   assert.equal(aptLabel({ average: null }), '');
-  assert.equal(areaText(84.97), '84.97㎡ (약 26평)');
+  // 평형은 흔히 부르는 공급면적 기준 (전용 84㎡ ≈ 34평형, 59㎡ ≈ 24평형)
+  assert.equal(areaText(84.97), '84.97㎡ (약 34평형)');
+  assert.equal(areaText(59.99), '59.99㎡ (약 24평형)');
+  assert.equal(areaText(114.9), '114.90㎡ (약 46평형)');
   assert.equal(areaText(0), '');
 });
 
@@ -33,8 +36,10 @@ test('오류: 인증키 없음·만료·예전 시트 코드·시트 미연결�
   // 원인을 찾을 수 있게 시트 코드가 알려 준 이유를 함께 보여 준다
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ aptError: 'api', message: 'NO_OPENAPI_SERVICE_ERROR' }) }),
     (error) => error.code === 'api' && error.message.includes('(이유: NO_OPENAPI_SERVICE_ERROR)'));
-  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: 'Exception: 권한이 없습니다: UrlFetchApp' }) }),
-    (error) => error.code === 'api' && error.message.includes('UrlFetchApp'));
+  // 시트 코드에 바깥 연결 권한이 없으면 영어 오류 대신 고치는 방법을 안내한다
+  const denied = 'UrlFetchApp.fetchAll을(를) 호출할 수 있는 권한이 없습니다. 필요한 권한은 https://www.googleapis.com/auth/script.external_request입니다.';
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: denied }) }),
+    (error) => error.code === 'permission' && /checkRealEstateKey/.test(error.message) && !error.message.includes('이유:'));
   // 구글 오류 문구에 요청 주소가 섞여 와도 인증키는 화면에 나오지 않는다
   const leaky = 'Exception: Address unavailable: https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=SECRET123%2Babc&LAWD_CD=11680';
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: leaky }) }),
