@@ -19,10 +19,12 @@ import {
   EMPTY, formatDate, formatMoney, formatPercent, formatPercentShort, formatYearMonth, josa, pnlClass,
 } from '../format.js';
 import { scoreGauge } from './score-view.js';
+import { segmented } from './form.js';
 
 const HELP = {
   total: [
     '투자자산(보유 종목 평가금액 + 예수금)과 기타 금융자산(공제회·예적금, 계좌에 연결하지 않은 연금 적립금)을 더한 금액이에요.',
+    '"부동산 포함"을 고르면 집값(부동산)도 더해요. 월별 기록(총자산 추이)은 어느 쪽이든 금융자산만 기록해요.',
     '계좌에 연결한 연금은 보유 종목으로 이미 들어가 있어서 다시 더하지 않아요. 앞으로 받을 연금은 "예상 월 연금액"에 따로 보여드려요.',
   ],
   pnl: '보유 종목의 평가금액에서 매입금액(평단가 × 수량)을 뺀 금액이에요. 공제회·예적금·연금은 넣지 않아요.',
@@ -67,26 +69,42 @@ function tile({ label, help, value, valueClass = '', subs = [], link = null }) {
 }
 
 // 총자산과 투자자산·기타 금융자산 나눔 (가는 막대 + 목록). 가려 두면 금액 대신 '누르면 보여요' 버튼과 비율만.
-function heroCard(summary, money, { revealed, onToggle }) {
+// realEstate: 부동산 합계, includeRealEstate: 총자산에 부동산을 넣을지 (부동산이 있으면 고르는 버튼을 보여 준다)
+function heroCard(summary, money, { revealed, onToggle, realEstate = 0, includeRealEstate = false, onIncludeChange }) {
+  const withHouse = includeRealEstate && realEstate > 0;
+  const total = summary.total + (withHouse ? realEstate : 0);
   const parts = [
     { name: '투자자산', value: summary.invested, color: 'series-1' },
     { name: '기타 금융자산', value: summary.others, color: 'series-2' },
+    ...(withHouse ? [{ name: '부동산', value: realEstate, color: 'series-3' }] : []),
   ];
-  const share = (value) => (summary.total > 0 ? value / summary.total : 0);
+  const share = (value) => (total > 0 ? value / total : 0);
   const amount = (value) => (revealed ? money(value) : MASK);
+  let scope = null;
+  if (realEstate > 0) {
+    const control = segmented({
+      options: [['exclude', '부동산 빼고'], ['include', '부동산 포함']],
+      value: withHouse ? 'include' : 'exclude',
+      onChange: (next) => onIncludeChange?.(next === 'include'),
+    });
+    control.element.classList.add('hero-scope');
+    control.element.setAttribute('aria-label', '총자산에 부동산(집값)을 넣을지');
+    scope = control.element;
+  }
   const value = revealed
-    ? el('p', { class: 'hero-value', text: money(summary.total) })
+    ? el('p', { class: 'hero-value', text: money(total) })
     : el('button', { type: 'button', class: 'hero-reveal', 'aria-label': '총자산 금액 보기', onClick: onToggle },
       el('span', { class: 'hero-mask', 'aria-hidden': 'true', text: `${MASK}원` }),
       el('span', { class: 'hero-reveal-hint' }, eyeIcon(true), '확인하려면 누르세요'));
   return el('section', { class: 'card dash-hero', 'aria-label': '총자산' },
     el('div', { class: 'hero-head' },
-      el('p', { class: 'hero-label' }, '총자산', helpTip('총자산', HELP.total)),
+      el('p', { class: 'hero-label' }, withHouse ? '총자산 (부동산 포함)' : '총자산', helpTip('총자산', HELP.total)),
       revealed
         ? el('button', { type: 'button', class: 'btn btn-small hero-hide', 'aria-label': '총자산 금액 가리기', onClick: onToggle }, eyeIcon(false), '가리기')
         : null),
+    scope,
     value,
-    summary.total > 0
+    total > 0
       ? el('div', {
         class: 'split-bar',
         role: 'img',
@@ -99,20 +117,25 @@ function heroCard(summary, money, { revealed, onToggle }) {
       el('span', { class: 'swatch', style: `background: var(--${part.color})`, 'aria-hidden': 'true' }),
       el('span', { class: 'split-name', text: part.name }),
       el('span', { class: 'split-value', text: amount(part.value) }),
-      summary.total > 0 ? el('span', { class: 'muted', text: formatPercentShort(share(part.value)) }) : null))),
+      total > 0 ? el('span', { class: 'muted', text: formatPercentShort(share(part.value)) }) : null))),
     summary.cash > 0
       ? el('p', { class: 'muted small', text: revealed ? `투자자산에는 예수금 ${money(summary.cash)}이 들어 있어요.` : '투자자산에는 예수금이 들어 있어요.' })
       : null);
 }
 
 // 순자산: 총자산 + 부동산 − 대출. 총자산처럼 가려 두고 누르면 보여 준다.
-function netWorthCard(worth, money, { revealed, onToggle }) {
+function netWorthCard(worth, money, { revealed, onToggle, includeRealEstate = false }) {
   const amount = (value) => (revealed ? money(value) : MASK);
-  const rows = [
-    ['총자산 (금융자산)', amount(worth.financial), ''],
-    ['부동산', amount(worth.realEstate), '+'],
-    ['대출 (남은 원금)', amount(worth.loans), '−'],
-  ];
+  const rows = includeRealEstate && worth.realEstate > 0
+    ? [
+      ['총자산 (부동산 포함)', amount(worth.financial + worth.realEstate), ''],
+      ['대출 (남은 원금)', amount(worth.loans), '−'],
+    ]
+    : [
+      ['총자산 (금융자산)', amount(worth.financial), ''],
+      ['부동산', amount(worth.realEstate), '+'],
+      ['대출 (남은 원금)', amount(worth.loans), '−'],
+    ];
   return el('section', { class: 'card dash-networth', 'aria-label': '순자산' },
     el('p', { class: 'hero-label' }, '순자산', helpTip('순자산', HELP.netWorth)),
     revealed
@@ -447,10 +470,21 @@ export function render(root, { getState, updateState, subscribe }) {
     };
     const loans = loansSummary(state.loans);
     const hasWorthItems = state.realEstate.length > 0 || state.loans.length > 0;
-    root.append(heroCard(summary, money, { revealed: totalRevealed, onToggle: toggleTotal }));
+    const houses = realEstateTotal(state.realEstate);
+    const includeRealEstate = s.totalIncludesRealEstate;
+    root.append(heroCard(summary, money, {
+      revealed: totalRevealed,
+      onToggle: toggleTotal,
+      realEstate: houses,
+      includeRealEstate,
+      onIncludeChange: (next) => {
+        updateState((draft) => { draft.settings.totalIncludesRealEstate = next; });
+        root.querySelector('.hero-scope input:checked')?.focus();
+      },
+    }));
     // 부동산이나 대출을 적었으면 순자산(총자산 + 부동산 − 대출)
     if (hasWorthItems) {
-      root.append(netWorthCard(netWorth({ financial: summary.total, realEstate: realEstateTotal(state.realEstate), loans: loans.balance }), money, { revealed: totalRevealed, onToggle: toggleTotal }));
+      root.append(netWorthCard(netWorth({ financial: summary.total, realEstate: houses, loans: loans.balance }), money, { revealed: totalRevealed, onToggle: toggleTotal, includeRealEstate }));
     }
     root.append(
       el('div', { class: 'kpi-grid' },

@@ -29,20 +29,23 @@ jobs:
       - name: 종목 목록 만들기
         run: node scripts/build-stock-list.mjs
 
+      - name: 시·군·구 목록 만들기 (아파트 실거래가 지역 고르기용, 못 받으면 지난 목록 그대로)
+        run: node scripts/build-districts.mjs
+
       - name: 테스트 (목록 형식 검사 포함)
         run: npm test
 
       - name: 바뀌었으면 저장
         id: save
         run: |
-          if git diff --quiet -- data/stocks.json; then
+          if git diff --quiet -- data/stocks.json data/districts.json; then
             echo "바뀐 내용이 없어요"
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/stocks.json
+          git add data/stocks.json data/districts.json
           git commit -m "종목 목록 갱신 ($(date -u +%Y-%m-%d))"
           git push
           echo "changed=true" >> "$GITHUB_OUTPUT"

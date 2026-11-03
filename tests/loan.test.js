@@ -136,6 +136,8 @@ test('저장 데이터 정리: 대출·부동산 기본값, 이상한 값은 버
   assert.equal(house.kind, '아파트');
   assert.equal(realEstateTotal([house, { value: -1 }]), 600_000_000);
   const data = normalizeData({ holdings: [] });
+  assert.equal(data.settings.totalIncludesRealEstate, false, '총자산에 부동산은 기본으로 빼고');
+  assert.equal(normalizeData({ settings: { totalIncludesRealEstate: true } }).settings.totalIncludesRealEstate, true);
   assert.deepEqual(data.loans, []);
   assert.deepEqual(data.realEstate, []);
   const kept = normalizeData({ loans: [{ name: 'A', balance: 1, rate: 1, method: 'equalPayment' }, 'x'], realEstate: [{ name: 'B', value: 1 }] });

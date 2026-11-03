@@ -16,7 +16,8 @@ import { openPensionForm, openPensionKindChooser } from './pension-form.js';
 import { openLoanForm } from './loan-form.js';
 import { openRealEstateForm } from './real-estate-form.js';
 import { TOO_SMALL_MONTHLY } from '../pension.js';
-import { realEstateTotal } from '../real-estate.js';
+import { realEstateTotal, realEstateValue } from '../real-estate.js';
+import { aptLabel, areaText } from '../apt-price.js';
 
 const STALE_TITLE = '마지막으로 갱신한 지 1년이 넘었어요. 공제회·연금공단 등에서 확인한 최신 금액으로 바꿔 주세요.';
 
@@ -170,20 +171,31 @@ export function render(root, { getState, updateState, subscribe }) {
     const today = todayString();
     const realEstateList = state.realEstate.length === 0
       ? el('p', { class: 'muted', text: '아직 입력한 부동산이 없어요. 집이 있으면 시세를 적어 두세요. 순자산(가진 것 − 빌린 돈)에 들어가요.' })
-      : el('ul', { class: 'asset-list' }, state.realEstate.map((item) => el('li', {}, el('button', {
-        type: 'button', class: 'asset-item', onClick: () => openRealEstateForm({ item, updateState }),
-      },
-      el('span', { class: 'asset-item-head' },
-        el('span', { class: 'asset-name' }, el('span', { text: item.name }), el('span', { class: 'badge badge-tiny', text: item.kind }), staleBadge(item)),
-        el('span', { class: 'asset-value num', text: money(item.value) })),
-      el('span', { class: 'asset-meta', text: `${formatDate(item.baseDate)} 기준 시세 · 직접 적은 값` })))));
+      : el('ul', { class: 'asset-list' }, state.realEstate.map((item) => {
+        // 실거래가로 자동 계산하는 아파트: 평균과 기간·건수를 함께, 거래가 없으면 직접 적은 값
+        let source = `${formatDate(item.baseDate)} 기준 시세 · 직접 적은 값`;
+        if (item.auto) {
+          const where = `${item.auto.name} 전용 ${areaText(item.auto.area)}`;
+          if (item.market?.average) source = `${aptLabel(item.market)} · ${where}`;
+          else if (item.market) source = `최근 1년 동안 거래가 없어 직접 적은 시세를 써요 · ${where}`;
+          else source = `실거래가를 아직 받지 못했어요 · ${where}`;
+        }
+        return el('li', {}, el('button', {
+          type: 'button', class: 'asset-item', onClick: () => openRealEstateForm({ item, getState, updateState }),
+        },
+        el('span', { class: 'asset-item-head' },
+          el('span', { class: 'asset-name' }, el('span', { text: item.name }), el('span', { class: 'badge badge-tiny', text: item.auto ? '실거래가' : item.kind }), item.auto ? null : staleBadge(item)),
+          el('span', { class: 'asset-value num', text: money(realEstateValue(item)) })),
+        el('span', { class: 'asset-meta', text: source }),
+        item.auto && item.market?.fetchedAt ? el('span', { class: 'asset-meta', text: `${formatDate(item.market.fetchedAt.slice(0, 10))}에 받음 · 일주일마다 새로 받아요` }) : null));
+      }));
     root.append(el('section', { class: 'card asset-section' },
       el('div', { class: 'asset-section-head' },
         el('h2', { class: 'section-title', text: '부동산' }),
-        el('button', { type: 'button', class: 'btn btn-small btn-primary', text: '+ 추가', 'aria-label': '부동산 추가', onClick: () => openRealEstateForm({ updateState }) })),
+        el('button', { type: 'button', class: 'btn btn-small btn-primary', text: '+ 추가', 'aria-label': '부동산 추가', onClick: () => openRealEstateForm({ getState, updateState }) })),
       realEstateList,
       state.realEstate.length > 0
-        ? el('p', { class: 'muted small', text: `합계 ${money(realEstateTotal(state.realEstate))} · 시세는 1년에 한두 번 확인해서 고쳐 주세요.` })
+        ? el('p', { class: 'muted small', text: `합계 ${money(realEstateTotal(state.realEstate))} · 직접 적은 시세는 1년에 한두 번 확인해서 고쳐 주세요. 아파트는 실거래가 평균으로 자동 계산할 수 있어요.` })
         : null));
 
     // ── 대출 ──

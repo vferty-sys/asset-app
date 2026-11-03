@@ -2450,3 +2450,72 @@
   border-radius: 10px;
   background: var(--surface-2);
 }
+
+/* ── 아파트 실거래가 자동 계산 (부동산 입력 창) ── */
+.apt-auto {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+
+.apt-auto[hidden],
+.apt-auto [hidden] {
+  display: none;
+}
+
+.apt-auto p {
+  margin: 0;
+}
+
+.apt-pickers,
+.apt-complex {
+  display: grid;
+  gap: 8px;
+}
+
+.apt-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.apt-row .input {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.apt-result {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.apt-trades {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-muted);
+}
+
+.apt-current {
+  font-weight: 600;
+}
+
+/* 총자산에 부동산 넣기/빼기 (대시보드) */
+.hero-scope {
+  justify-self: start;
+  grid-auto-columns: auto;
+  padding: 3px;
+}
+
+.hero-scope .segmented-option span {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
