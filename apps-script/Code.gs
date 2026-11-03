@@ -61,7 +61,7 @@ const SHEET_NAME = '시세';
 const HEADER_ROWS = 1;
 const CURRENCY_PREFIX = 'CURRENCY:';
 const HEADER = ['티커', '가격', '통화'];
-const FEATURES = ['add-tickers', 'apt-trades'];
+const FEATURES = ['add-tickers', 'apt-trades', 'apt-areas'];
 // 티커 자동 추가: 거래소:종목코드 모양만 (예: KRX:005930, KRX:0085P0, NYSE:BRK.B, CURRENCY:USDKRW)
 const ADD_TICKER_PATTERN = /^[A-Z][A-Z0-9]{0,14}:[A-Z0-9][A-Z0-9.\-]{0,19}$/;
 const MAX_ADD_TICKERS = 150;
@@ -445,7 +445,8 @@ function syncHistory_(body) {
 //  처음 한 번: 함수 목록에서 checkRealEstateKey를 골라 [실행]하면 외부 연결 권한을 허용하고 인증키를 확인해요.
 //  ?action=apt-complexes&lawd=11680  → 그 시·군·구에서 최근 12개월 동안 거래된 단지 목록 (단지·전용면적 고르기용)
 //  ?action=apt-price&lawd=11680&apt=단지일련번호&name=단지명&dong=법정동&area=84.97
-//                                     → 그 단지·전용면적(±1㎡)의 최근 3·6·12개월 거래 평균 (해제된 거래는 뺌)
+//                                     → 그 단지·전용면적의 최근 3·6·12개월 거래 평균 (해제된 거래는 뺌)
+//    &areas=84.92,84.97,84.99         → 같은 평형의 여러 전용면적을 합쳐서 평균 (area 대신, 앱의 'OO평형 전체')
 //  같은 달 자료는 6시간 동안 다시 받지 않는다 (공공데이터 하루 사용량 아끼기).
 
 const MOLIT_KEY_PROPERTY = 'MOLIT_API_KEY';
@@ -456,7 +457,7 @@ const MOLIT_ENDPOINTS = [
 ];
 const APT_MONTHS = 12;
 const APT_WINDOWS = [3, 6, 12];
-const APT_AREA_TOLERANCE = 1; // 전용면적 차이(㎡)가 이 안이면 같은 평형으로 본다
+const APT_MAX_AREAS = 10; // 'OO평형 전체'로 합칠 수 있는 전용면적 수
 const APT_PAGE_SIZE = 1000;
 const APT_MAX_PAGES = 5;
 const APT_CACHE_SECONDS = 6 * 60 * 60;
@@ -630,21 +631,34 @@ function aptComplexes_(params) {
   return { lawd, months: APT_MONTHS, complexes };
 }
 
+// 전용면적을 소수 둘째 자리로 맞춘 값 (84.9700 → 84.97)
+function areaKey_(value) {
+  return Math.round(Number(value) * 100) / 100;
+}
+
+// 요청의 전용면적: areas=84.92,84.97 (여러 개) 또는 area=84.97 (하나)
+function aptAreas_(params) {
+  const list = String(params.areas || params.area || '').split(',').map(areaKey_).filter((value) => value > 0);
+  return list.filter((value, index) => list.indexOf(value) === index).slice(0, APT_MAX_AREAS);
+}
+
 // 그 단지·전용면적의 최근 3·6·12개월 거래 평균. 가장 짧은 기간부터 거래가 있는 기간의 평균을 쓴다(used).
 function aptPrice_(params) {
   const lawd = cleanLawd_(params.lawd);
   const apt = String(params.apt || '').trim();
   const name = String(params.name || '').trim();
   const dong = String(params.dong || '').trim();
-  const area = Number(params.area);
-  if (!(area > 0) || (!apt && !name)) throw molitError_('bad-request', '단지와 전용면적이 필요해요.');
+  // 전용면적은 소수 둘째 자리까지 똑같은 것만 같은 면적으로 본다 (84.92·84.97·84.99㎡는 서로 다른 타입)
+  const areas = aptAreas_(params);
+  if (!areas.length || (!apt && !name)) throw molitError_('bad-request', '단지와 전용면적이 필요해요.');
+  const area = areas[0];
   const months = aptMonths_(APT_MONTHS);
   const data = molitTrades_(lawd, months);
   const trades = [];
   months.forEach((ym, monthIndex) => (data[ym] || []).forEach((row) => {
     if (row[9]) return; // 해제(취소)된 거래
     const same = apt && row[0] ? row[0] === apt : row[1] === name && (!dong || row[2] === dong);
-    if (!same || Math.abs(row[3] - area) > APT_AREA_TOLERANCE) return;
+    if (!same || areas.indexOf(areaKey_(row[3])) < 0) return;
     trades.push({
       date: `${row[5]}-${String(row[6]).padStart(2, '0')}-${String(row[7]).padStart(2, '0')}`,
       amount: row[4], floor: row[8], area: row[3], monthIndex,
@@ -665,7 +679,7 @@ function aptPrice_(params) {
     };
   });
   return {
-    lawd, apt, name, dong, area,
+    lawd, apt, name, dong, area, areas,
     windows,
     used: windows.find((window) => window.count > 0) || null,
     trades: trades.slice(0, 20).map((trade) => ({ date: trade.date, amount: trade.amount, floor: trade.floor, area: trade.area })),

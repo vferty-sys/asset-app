@@ -72,7 +72,9 @@ export function parseSheetResponse(json, { now = new Date() } = {}) {
   // 아파트 실거래가: 시트 코드가 조회할 수 있는지, 인증키를 스크립트 속성에 넣었는지 (키 자체는 오지 않는다)
   const aptTrades = json.aptTrades === true || (Array.isArray(json.features) && json.features.includes('apt-trades'));
   const aptKey = json.aptKey === true;
-  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors], added, canAddTickers, aptTrades, aptKey };
+  // 전용면적별로 정확히 나눠 계산하는 시트 코드인지 (예전 코드는 ±1㎡ 비슷한 면적을 합쳐서 계산했다)
+  const aptAreas = json.aptAreas === true || (Array.isArray(json.features) && json.features.includes('apt-areas'));
+  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors], added, canAddTickers, aptTrades, aptKey, aptAreas };
 }
 
 // 시트에 넣어 달라고 보낼 티커: 보유 종목 티커(중복 없이) + 달러 종목이 있으면 환율 줄
@@ -161,6 +163,7 @@ export function buildMarket({ cache, settings }) {
     canAddTickers: Boolean(data?.canAddTickers),
     aptTrades: Boolean(data?.aptTrades),
     aptKey: Boolean(data?.aptKey),
+    aptAreas: Boolean(data?.aptAreas),
   };
 }
 

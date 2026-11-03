@@ -59,7 +59,7 @@ test('단지 목록: 최근 12개월 거래를 단지·전용면적별로 모으
   assert.equal(calls.fetches.length, 12);
 });
 
-test('집값: 같은 단지·전용면적(±1㎡) 거래로 최근 3개월 → 6개월 → 12개월 평균, 해제 거래는 뺀다', () => {
+test('집값: 같은 단지·같은 전용면적(소수 둘째 자리까지) 거래로 최근 3개월 → 6개월 → 12개월 평균, 해제 거래는 뺀다', () => {
   const months = [0, 1, 4, 8].map(ym);
   const deal = (m, amount, extra = {}) => trade({ dealYear: m.year, dealMonth: m.month, dealAmount: amount, ...extra });
   const { context } = load(sheets(), {
@@ -72,12 +72,22 @@ test('집값: 같은 단지·전용면적(±1㎡) 거래로 최근 3개월 → 6
     }),
   });
   const result = run(context, { action: 'apt-price', lawd: '11680', apt: '11680-123', name: '래미안&퍼스티지', dong: '반포동', area: '84.97' });
-  assert.deepEqual(result.windows.map((w) => [w.months, w.count, w.average]), [[3, 2, 3_450_000_000], [6, 3, 3_366_666_667], [12, 4, 3_275_000_000]]);
+  // 84.10㎡는 84.97㎡와 다른 타입이라 넣지 않는다 (예전에는 ±1㎡를 같은 면적으로 봐서 섞였다)
+  assert.deepEqual(result.windows.map((w) => [w.months, w.count, w.average]), [[3, 1, 3_500_000_000], [6, 2, 3_350_000_000], [12, 3, 3_233_333_333]]);
   assert.equal(result.used.months, 3);
   assert.equal(result.used.from, ym(2).ym);
   assert.equal(result.used.to, ym(0).ym);
   assert.equal(result.trades[0].amount, 3_500_000_000);
-  assert.equal(result.trades.length, 4);
+  assert.equal(result.trades.length, 3);
+  assert.ok(result.trades.every((t) => t.area === 84.97));
+  assert.ok(run(context, {}).features.includes('apt-areas'), '앱이 전용면적별 계산을 아는 시트 코드인지 알 수 있게');
+
+  // 'OO평형 전체': 같은 평형의 여러 전용면적을 합쳐서 평균
+  const both = run(context, { action: 'apt-price', lawd: '11680', apt: '11680-123', area: '84.97', areas: '84.10,84.9700,84.10' });
+  assert.deepEqual(both.areas, [84.1, 84.97], '중복은 한 번만, 소수 둘째 자리로');
+  assert.deepEqual(both.windows.map((w) => [w.months, w.count, w.average]), [[3, 2, 3_450_000_000], [6, 3, 3_366_666_667], [12, 4, 3_275_000_000]]);
+  assert.equal(run(context, { action: 'apt-price', lawd: '11680', apt: '11680-123', area: '84.1' }).used.count, 1, '84.10㎡만');
+  assert.equal(run(context, { action: 'apt-price', lawd: '11680', apt: '11680-123', areas: 'x,0' }).aptError, 'bad-request');
 
   // 최근 3개월에 거래가 없으면 6개월, 1년에 하나도 없으면 used: null
   const older = load(sheets(), { properties: { MOLIT_API_KEY: 'k' }, fetch: fakeMolit({ [months[2].ym]: [deal(months[2], '320,000')] }) }).context;

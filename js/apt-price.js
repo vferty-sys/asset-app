@@ -82,7 +82,11 @@ export async function fetchAptComplexes(sheetUrl, lawd, options) {
 // 단지·전용면적의 최근 실거래가 평균 → 부동산 항목에 저장하는 market
 //  { average, months, count, min, max, from, to, trades, fetchedAt } (1년 동안 거래가 없으면 average: null, count: 0)
 export async function fetchAptPrice(sheetUrl, auto, { now = new Date(), ...options } = {}) {
-  const json = await askSheet(sheetUrl, { action: 'apt-price', lawd: auto.lawd, apt: auto.apt, name: auto.name, dong: auto.dong, area: auto.area }, options);
+  // 'OO평형 전체'면 그 전용면적들을 모두 보낸다 (예전 시트 코드는 areas를 몰라서 area 근처 ±1㎡로 계산)
+  const areas = Array.isArray(auto.areas) && auto.areas.length > 1 ? auto.areas.join(',') : '';
+  const json = await askSheet(sheetUrl, {
+    action: 'apt-price', lawd: auto.lawd, apt: auto.apt, name: auto.name, dong: auto.dong, area: auto.area, areas,
+  }, options);
   return marketFromResponse(json, now);
 }
 
@@ -132,6 +136,29 @@ export function areaText(area) {
   const value = Number(area);
   if (!(value > 0)) return '';
   return `${value.toFixed(2)}㎡ (약 ${pyeongType(value)}평형)`;
+}
+
+// 고른 단지의 면적 문구: '전용 84.97㎡ (약 34평형)' 또는 '약 34평형 전체 (전용 84.92·84.97·84.99㎡)'
+export function autoAreaText(auto) {
+  const areas = Array.isArray(auto?.areas) && auto.areas.length > 1 ? auto.areas : null;
+  if (!areas) return auto?.area > 0 ? `전용 ${areaText(auto.area)}` : '';
+  return `약 ${pyeongType(areas[0])}평형 전체 (전용 ${areas.map((value) => Number(value).toFixed(2)).join('·')}㎡)`;
+}
+
+// 단지의 전용면적 목록 [{ area, count }]을 평형별로 묶는다: [{ pyeong, count, areas: [{ area, count }] }] (작은 평형부터)
+export function groupAreasByPyeong(areas) {
+  const groups = new Map();
+  for (const entry of areas ?? []) {
+    const pyeong = pyeongType(entry.area);
+    if (pyeong == null) continue;
+    const group = groups.get(pyeong) ?? { pyeong, count: 0, areas: [] };
+    group.count += Number(entry.count) || 0;
+    group.areas.push({ area: Number(entry.area), count: Number(entry.count) || 0 });
+    groups.set(pyeong, group);
+  }
+  return [...groups.values()]
+    .map((group) => ({ ...group, areas: group.areas.sort((a, b) => a.area - b.area) }))
+    .sort((a, b) => a.pyeong - b.pyeong);
 }
 
 // 시·군·구 목록: [{ code, sido, name }]

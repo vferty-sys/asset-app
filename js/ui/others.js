@@ -17,7 +17,7 @@ import { openLoanForm } from './loan-form.js';
 import { openRealEstateForm } from './real-estate-form.js';
 import { TOO_SMALL_MONTHLY } from '../pension.js';
 import { realEstateTotal, realEstateValue } from '../real-estate.js';
-import { aptLabel, areaText } from '../apt-price.js';
+import { aptLabel, autoAreaText } from '../apt-price.js';
 
 const STALE_TITLE = '마지막으로 갱신한 지 1년이 넘었어요. 공제회·연금공단 등에서 확인한 최신 금액으로 바꿔 주세요.';
 
@@ -175,7 +175,7 @@ export function render(root, { getState, updateState, subscribe }) {
         // 실거래가로 자동 계산하는 아파트: 평균과 기간·건수를 함께, 거래가 없으면 직접 적은 값
         let source = `${formatDate(item.baseDate)} 기준 시세 · 직접 적은 값`;
         if (item.auto) {
-          const where = `${item.auto.name} 전용 ${areaText(item.auto.area)}`;
+          const where = `${item.auto.name} ${autoAreaText(item.auto)}`;
           if (item.market?.average) source = `${aptLabel(item.market)} · ${where}`;
           else if (item.market) source = `최근 1년 동안 거래가 없어 직접 적은 시세를 써요 · ${where}`;
           else source = `실거래가를 아직 받지 못했어요 · ${where}`;
