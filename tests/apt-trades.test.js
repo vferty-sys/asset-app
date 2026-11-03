@@ -109,6 +109,17 @@ test('공공데이터 오류: 키 틀림·만료·사용량 초과를 코드로 
   assert.equal(run(answer(xml([])), { action: 'apt-complexes', lawd: '1168' }).aptError, 'bad-request');
 });
 
+test('구글 오류 문구에 요청 주소가 섞여도 인증키는 앱으로 보내지 않는다', () => {
+  const { context } = load(sheets(), {
+    properties: { MOLIT_API_KEY: 'SECRET123' },
+    fetch: (url) => { throw new Error(`Address unavailable: ${url}`); },
+  });
+  const result = run(context, { action: 'apt-complexes', lawd: '11680' });
+  const text = JSON.stringify(result);
+  assert.ok(!text.includes('SECRET123'), text);
+  assert.match(text, /Address unavailable: https:\/\/apis\.data\.go\.kr\/\S+\?…/);
+});
+
 test('checkRealEstateKey: 편집기에서 실행하면 인증키가 되는지 알려 준다', () => {
   const ok = load(sheets(), { properties: { MOLIT_API_KEY: 'k' }, fetch: () => ({ status: 200, body: xml([trade({})]) }) });
   ok.context.checkRealEstateKey();

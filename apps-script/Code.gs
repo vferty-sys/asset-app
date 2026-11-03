@@ -97,10 +97,17 @@ function doGet(e) {
   } catch (error) {
     // 실거래가 조회 오류는 앱이 알아보는 코드(aptError)로 돌려준다
     result = error && error.aptError
-      ? { aptError: error.aptError, message: String(error.message || '') }
-      : { error: String((error && error.message) || error) };
+      ? { aptError: error.aptError, message: safeMessage_(error.message) }
+      : { error: safeMessage_((error && error.message) || error) };
   }
   return jsonOutput_(result);
+}
+
+// 구글 오류 문구에 요청 주소(공공데이터 인증키가 들어 있음)가 섞여 나올 수 있어서, 주소의 ? 뒤와 serviceKey 값은 지운다
+function safeMessage_(message) {
+  return String(message || '')
+    .replace(/(https?:\/\/[^\s?#]+)[?#]\S*/gi, '$1?…')
+    .replace(/(service_?key\s*[=:]\s*)[^\s&,)]+/gi, '$1…');
 }
 
 // 기기 연동: 앱이 자산 데이터를 저장·불러올 때 실행된다 (웹 앱 POST 요청, 내용은 JSON)

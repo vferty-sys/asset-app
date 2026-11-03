@@ -27,7 +27,17 @@ export const APT_ERROR_MESSAGES = Object.freeze({
   timeout: '실거래가를 받는 데 시간이 너무 오래 걸려요. 잠시 뒤 다시 해 보세요.',
 });
 
-const fail = (code, detail = '') => new AptError(code, APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api + (detail ? ` (${detail})` : ''));
+// 시트 코드가 알려 준 자세한 이유를 문구 뒤에 붙인다 (원인을 찾기 쉽게). 인증키는 시트 코드가 보내지 않는다.
+const NO_DETAIL = ['no-feature', 'no-sheet', 'no-key', 'network', 'timeout'];
+const fail = (code, detail = '') => {
+  const base = APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api;
+  // 구글 오류 문구에 요청 주소(인증키가 들어 있음)가 섞여 올 수 있어서, 주소의 ? 뒤와 serviceKey 값은 지운다
+  const reason = String(detail ?? '')
+    .replace(/(https?:\/\/[^\s?#]+)[?#]\S*/gi, '$1?…')
+    .replace(/(service_?key\s*[=:]\s*)[^\s&,)]+/gi, '$1…')
+    .replace(/\s+/g, ' ').trim().slice(0, 160);
+  return new AptError(code, reason && !NO_DETAIL.includes(code) ? `${base} (이유: ${reason})` : base);
+};
 
 async function askSheet(sheetUrl, params, { fetchImpl = globalThis.fetch, timeoutMs = APT_TIMEOUT_MS } = {}) {
   if (!sheetUrl) throw fail('no-sheet');
