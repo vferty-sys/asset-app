@@ -5,11 +5,13 @@ import { STALE_AFTER_DAYS } from '../constants.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, concentrationAlerts, holdingWeights } from '../calc/diversification.js';
 import { scorePortfolio } from '../calc/score.js';
-import { assetSummary, valueByAccount } from '../calc/totals.js';
+import { assetSummary, netWorth, valueByAccount } from '../calc/totals.js';
+import { loansSummary } from '../calc/loan.js';
+import { realEstateTotal } from '../real-estate.js';
 import { cashInKRW } from '../cash.js';
 import { pensionSummary, planPensions } from '../calc/projection.js';
 import { loadChartLibrary, renderTrendChart } from '../charts.js';
-import { ageAt, currentMonthIndex, formatMonthIndex, isOlderThan, toYearMonth } from '../dates.js';
+import { ageAt, currentMonthIndex, durationText, formatMonthIndex, isOlderThan, parseMonth, toYearMonth } from '../dates.js';
 import { getMarket, getPriceStatus, subscribeMarket } from '../market.js';
 import { createSnapshot, latestChange, shouldSuggestSnapshot, upsertSnapshot } from '../snapshot.js';
 import { el, clear, confirmDialog, helpTip, showToast, svg, uid } from '../dom.js';
@@ -25,6 +27,11 @@ const HELP = {
   ],
   pnl: '보유 종목의 평가금액에서 매입금액(평단가 × 수량)을 뺀 금액이에요. 공제회·예적금·연금은 넣지 않아요.',
   pension: '연금마다 받기 시작할 때의 월 수령액을 지금 돈 가치(현재가치)로 바꿔 더한 금액이에요. 총자산에는 넣지 않아요.',
+  netWorth: [
+    '순자산 = 총자산(금융자산) + 부동산 − 대출이에요. 빚을 뺀 내 재산이에요.',
+    '부동산은 직접 적은 시세, 대출은 기준일 금액에서 갚은 만큼 뺀 오늘 남은 원금으로 계산해요.',
+  ],
+  loanPayment: '대출마다 다음에 갚을 돈(원금 + 이자)을 더한 금액이에요. 원리금균등은 매달 같고, 원금균등은 점점 줄어요.',
   dividend: '보유 종목에 입력한 "연간 주당 배당금 × 수량"을 더한 값이에요. 배당수익률은 연 배당금 ÷ 투자자산이에요.',
   score: '주식이 한쪽에 쏠리지 않고 잘 나뉘어 있는지 100점 만점으로 매긴 점수예요. 항목별 점수와 이유는 분산 분석에서 볼 수 있어요.',
   trend: [
@@ -96,6 +103,42 @@ function heroCard(summary, money, { revealed, onToggle }) {
     summary.cash > 0
       ? el('p', { class: 'muted small', text: revealed ? `투자자산에는 예수금 ${money(summary.cash)}이 들어 있어요.` : '투자자산에는 예수금이 들어 있어요.' })
       : null);
+}
+
+// 순자산: 총자산 + 부동산 − 대출. 총자산처럼 가려 두고 누르면 보여 준다.
+function netWorthCard(worth, money, { revealed, onToggle }) {
+  const amount = (value) => (revealed ? money(value) : MASK);
+  const rows = [
+    ['총자산 (금융자산)', amount(worth.financial), ''],
+    ['부동산', amount(worth.realEstate), '+'],
+    ['대출 (남은 원금)', amount(worth.loans), '−'],
+  ];
+  return el('section', { class: 'card dash-networth', 'aria-label': '순자산' },
+    el('p', { class: 'hero-label' }, '순자산', helpTip('순자산', HELP.netWorth)),
+    revealed
+      ? el('p', { class: 'networth-value num', text: money(worth.total) })
+      : el('button', { type: 'button', class: 'hero-reveal networth-reveal', 'aria-label': '순자산 금액 보기', onClick: onToggle },
+        el('span', { class: 'hero-mask', 'aria-hidden': 'true', text: `${MASK}원` }),
+        el('span', { class: 'hero-reveal-hint' }, eyeIcon(true), '확인하려면 누르세요')),
+    el('dl', { class: 'networth-rows' }, rows.map(([label, value, sign]) => el('div', { class: 'networth-row' },
+      el('dt', {}, sign ? el('span', { class: 'networth-sign', 'aria-hidden': 'true', text: sign }) : null, label),
+      el('dd', { class: 'num', text: value })))),
+    el('a', { class: 'kpi-link', href: '#others', text: '부동산·대출 보기' }));
+}
+
+// 매달 갚는 돈: 대출마다 다음 회차(원금 + 이자) 합계와 가장 늦게 다 갚는 날
+function loanTile(loans, money) {
+  const months = loans.lastPayoffDate ? Math.max(0, parseMonth(loans.lastPayoffDate) - currentMonthIndex()) : null;
+  return tile({
+    label: '매달 갚는 돈',
+    help: HELP.loanPayment,
+    value: `월 ${money(loans.monthlyPayment)}`,
+    subs: [
+      `원금 ${formatMoney(loans.monthlyPrincipal, { unit: 'won' })} · 이자 ${formatMoney(loans.monthlyInterest, { unit: 'won' })}`,
+      loans.lastPayoffDate ? `대출 ${loans.items.length}건 · 다 갚는 날 ${formatMonthIndex(parseMonth(loans.lastPayoffDate))} (앞으로 ${durationText(months)})` : `대출 ${loans.items.length}건`,
+    ],
+    link: { href: '#others', text: '대출 보기' },
+  });
 }
 
 function pnlTile(state, portfolio, money) {
@@ -181,10 +224,14 @@ function healthCard({ score, alerts }) {
   return section;
 }
 
-// 1년 넘게 고치지 않은 공제회·예적금·연금(갱신 알림)과 시세 문제
-function checkItems(state, portfolio) {
+// 1년 넘게 고치지 않은 공제회·예적금·연금·부동산·대출(갱신 알림), 원금이 줄지 않는 대출, 시세 문제
+function checkItems(state, portfolio, loans) {
   const items = [];
-  for (const item of [...state.otherAssets, ...state.pensions]) {
+  for (const { loan, status } of loans.items) {
+    if (status.error !== 'too-small') continue;
+    items.push({ text: `${loan.name}: 매월 상환액이 이자보다 적어서 원금이 줄지 않아요. 금액을 확인해 주세요.`, href: '#others', linkText: '대출 고치기' });
+  }
+  for (const item of [...state.otherAssets, ...state.pensions, ...state.realEstate, ...state.loans]) {
     if (!isOlderThan(item.updatedAt, STALE_AFTER_DAYS)) continue;
     items.push({
       text: `${item.name}: 마지막으로 고친 지 1년이 넘었어요(${formatDate(item.updatedAt)}). 업데이트할 때가 됐어요.`,
@@ -237,7 +284,10 @@ export function render(root, { getState, updateState, subscribe }) {
     const market = getMarket(state);
     const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
     const cash = cashInKRW(state.cash, market.fx.rate);
-    const summary = assetSummary({ rows: portfolio.rows, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount });
+    // 공제회·예적금은 기준일 금액에서 납입·이자를 더한 오늘 추정 금액
+    const summary = assetSummary({
+      rows: portfolio.rows, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount, nowMonth: currentMonthIndex(),
+    });
     return { state, portfolio, summary, cash };
   }
 
@@ -359,7 +409,7 @@ export function render(root, { getState, updateState, subscribe }) {
     const nowMonth = currentMonthIndex();
     const thisMonth = toYearMonth(nowMonth);
 
-    if (state.holdings.length === 0 && state.otherAssets.length === 0 && state.pensions.length === 0) {
+    if (state.holdings.length + state.otherAssets.length + state.pensions.length + state.realEstate.length + state.loans.length === 0) {
       root.append(el('section', { class: 'card empty-state' },
         el('p', { class: 'empty-title', text: '아직 입력한 자산이 없어요' }),
         el('p', { class: 'muted', text: '보유 종목과 공제회·예적금·연금을 입력하면 총자산, 손익, 예상 연금, 건강도 점수를 여기서 한눈에 보여드려요.' }),
@@ -395,18 +445,25 @@ export function render(root, { getState, updateState, subscribe }) {
       draw();
       root.querySelector(totalRevealed ? '.hero-hide' : '.hero-reveal')?.focus();
     };
+    const loans = loansSummary(state.loans);
+    const hasWorthItems = state.realEstate.length > 0 || state.loans.length > 0;
+    root.append(heroCard(summary, money, { revealed: totalRevealed, onToggle: toggleTotal }));
+    // 부동산이나 대출을 적었으면 순자산(총자산 + 부동산 − 대출)
+    if (hasWorthItems) {
+      root.append(netWorthCard(netWorth({ financial: summary.total, realEstate: realEstateTotal(state.realEstate), loans: loans.balance }), money, { revealed: totalRevealed, onToggle: toggleTotal }));
+    }
     root.append(
-      heroCard(summary, money, { revealed: totalRevealed, onToggle: toggleTotal }),
       el('div', { class: 'kpi-grid' },
         pnlTile(state, portfolio, money),
         pensionTile(state, plans, nowMonth, money),
-        dividendTile(state, portfolio, money)));
+        dividendTile(state, portfolio, money),
+        state.loans.length > 0 ? loanTile(loans, money) : null));
 
     // ── 건강도·쏠림 경고, 확인할 것 ──
     const stocks = analyzeDiversification(portfolio.rows);
     const score = stocks.stockTotal > 0 ? scorePortfolio(portfolio.rows, s) : null;
     const alerts = score ? concentrationAlerts({ ...stocks, holdings: holdingWeights(portfolio.rows) }, s) : [];
-    root.append(el('div', { class: 'dash-grid' }, healthCard({ score, alerts }), checksCard(checkItems(state, portfolio))));
+    root.append(el('div', { class: 'dash-grid' }, healthCard({ score, alerts }), checksCard(checkItems(state, portfolio, loans))));
 
     // ── 총자산 추이 ──
     const trend = trendCard({ snapshots: state.snapshots, thisMonth, money, loading, settings: s, onReveal: toggleTotal });

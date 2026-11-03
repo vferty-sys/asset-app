@@ -10,6 +10,8 @@ import { normalizeOtherAsset } from './other-asset.js';
 import { normalizePension } from './pension.js';
 import { normalizeSnapshots } from './snapshot.js';
 import { normalizeCash } from './cash.js';
+import { normalizeLoan } from './loan.js';
+import { normalizeRealEstate } from './real-estate.js';
 
 // 데이터 구조를 바꿀 때마다 1씩 올리고 MIGRATIONS에 변환 함수를 추가한다.
 export const SCHEMA_VERSION = 1;
@@ -22,7 +24,7 @@ export const MIGRATIONS = Object.freeze({
 });
 
 const BACKUP_APP_ID = 'asset-app';
-const KNOWN_TOP_KEYS = ['schemaVersion', 'holdings', 'cash', 'otherAssets', 'pensions', 'targets', 'settings', 'snapshots'];
+const KNOWN_TOP_KEYS = ['schemaVersion', 'holdings', 'cash', 'otherAssets', 'pensions', 'realEstate', 'loans', 'targets', 'settings', 'snapshots'];
 
 export class DataError extends Error {
   constructor(code, message) {
@@ -39,6 +41,8 @@ export function createDefaultData(now = new Date()) {
     cash: {},
     otherAssets: [],
     pensions: [],
+    realEstate: [],
+    loans: [],
     targets: { mode: 'assetClass', assetClass: {}, ticker: {} },
     settings: sanitizeObject(SETTINGS_SCHEMA, {}),
     snapshots: [],
@@ -101,6 +105,9 @@ export function normalizeData(raw) {
     otherAssets: objectList(source.otherAssets).map((asset) => normalizeOtherAsset(asset)),
     // 세율이 없던 예전 연금은 설정의 연금 세율 기본값으로 채운다
     pensions: objectList(source.pensions).map((pension) => normalizePension(pension, { defaultTaxRate: settings.pensionTaxRate })),
+    // 집 같은 부동산(시세는 직접 적음)과 대출 — 순자산 = 금융자산 + 부동산 − 대출
+    realEstate: objectList(source.realEstate).map((item) => normalizeRealEstate(item)),
+    loans: objectList(source.loans).map((loan) => normalizeLoan(loan)),
     targets: normalizeTargets(source.targets),
     settings,
     snapshots: normalizeSnapshots(source.snapshots),

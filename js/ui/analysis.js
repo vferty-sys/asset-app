@@ -17,6 +17,7 @@ import { el, clear, showToast } from '../dom.js';
 import { formatMoney, formatPercent } from '../format.js';
 import { segmented } from './form.js';
 import { scoreCard } from './score-view.js';
+import { currentMonthIndex } from '../dates.js';
 
 const CHARTS = [
   { key: 'country', title: '국가별 비중', order: COUNTRY_OPTIONS, stocksOnly: true, limitKey: 'warnCountry', excluded: NON_COUNTRY_NAMES },
@@ -172,7 +173,7 @@ export function render(root, { getState, updateState, subscribe }) {
     const score = scorePortfolio(portfolio.rows, state.settings);
     const alerts = concentrationAlerts({ ...stocks, holdings: holdingWeights(portfolio.rows) }, state.settings);
     const view = includeOthers
-      ? analyzeDiversification(portfolio.rows, { includeOthers: true, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount })
+      ? analyzeDiversification(portfolio.rows, { includeOthers: true, otherAssets: state.otherAssets, pensions: state.pensions, cashByAccount: cash.byAccount, nowMonth: currentMonthIndex() })
       : stocks;
 
     // 국가를 고칠 ETF는 종목 목록을 받아 온 뒤에 찾아서 쏠림 경고 바로 아래에 보여준다
