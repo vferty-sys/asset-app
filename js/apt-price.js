@@ -31,7 +31,11 @@ export const APT_ERROR_MESSAGES = Object.freeze({
 const NO_DETAIL = ['no-feature', 'no-sheet', 'no-key', 'network', 'timeout'];
 const fail = (code, detail = '') => {
   const base = APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api;
-  const reason = String(detail ?? '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  // 구글 오류 문구에 요청 주소(인증키가 들어 있음)가 섞여 올 수 있어서, 주소의 ? 뒤와 serviceKey 값은 지운다
+  const reason = String(detail ?? '')
+    .replace(/(https?:\/\/[^\s?#]+)[?#]\S*/gi, '$1?…')
+    .replace(/(service_?key\s*[=:]\s*)[^\s&,)]+/gi, '$1…')
+    .replace(/\s+/g, ' ').trim().slice(0, 160);
   return new AptError(code, reason && !NO_DETAIL.includes(code) ? `${base} (이유: ${reason})` : base);
 };
 

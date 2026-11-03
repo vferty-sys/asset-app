@@ -35,6 +35,12 @@ test('오류: 인증키 없음·만료·예전 시트 코드·시트 미연결�
     (error) => error.code === 'api' && error.message.includes('(이유: NO_OPENAPI_SERVICE_ERROR)'));
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: 'Exception: 권한이 없습니다: UrlFetchApp' }) }),
     (error) => error.code === 'api' && error.message.includes('UrlFetchApp'));
+  // 구글 오류 문구에 요청 주소가 섞여 와도 인증키는 화면에 나오지 않는다
+  const leaky = 'Exception: Address unavailable: https://apis.data.go.kr/1613000/RTMSDataSvcAptTradeDev/getRTMSDataSvcAptTradeDev?serviceKey=SECRET123%2Babc&LAWD_CD=11680';
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: leaky }) }),
+    (error) => !error.message.includes('SECRET123') && error.message.includes('Address unavailable'));
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ aptError: 'api', message: 'bad serviceKey=SECRET123 given' }) }),
+    (error) => !error.message.includes('SECRET123'));
   await assert.rejects(fetchAptPrice(SHEET, auto, { fetchImpl: respond({ aptError: 'no-key', message: '스크립트 속성에 없음' }) }),
     (error) => !error.message.includes('이유:'), '인증키 없음은 안내 문구만');
 });
