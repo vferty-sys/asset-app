@@ -30,6 +30,13 @@ test('오류: 인증키 없음·만료·예전 시트 코드·시트 미연결�
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ prices: {}, fx: {} }) }), (error) => error.code === 'no-feature');
   await assert.rejects(fetchAptComplexes('', '11680'), (error) => error.code === 'no-sheet');
   await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: async () => { throw new TypeError('x'); } }), (error) => error.code === 'network');
+  // 원인을 찾을 수 있게 시트 코드가 알려 준 이유를 함께 보여 준다
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ aptError: 'api', message: 'NO_OPENAPI_SERVICE_ERROR' }) }),
+    (error) => error.code === 'api' && error.message.includes('(이유: NO_OPENAPI_SERVICE_ERROR)'));
+  await assert.rejects(fetchAptComplexes(SHEET, '11680', { fetchImpl: respond({ error: 'Exception: 권한이 없습니다: UrlFetchApp' }) }),
+    (error) => error.code === 'api' && error.message.includes('UrlFetchApp'));
+  await assert.rejects(fetchAptPrice(SHEET, auto, { fetchImpl: respond({ aptError: 'no-key', message: '스크립트 속성에 없음' }) }),
+    (error) => !error.message.includes('이유:'), '인증키 없음은 안내 문구만');
 });
 
 test('앱 → 시트 코드 → (가짜) 공공데이터: 단지 목록과 평균을 받아 온다', async () => {

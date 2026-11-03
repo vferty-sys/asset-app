@@ -27,7 +27,13 @@ export const APT_ERROR_MESSAGES = Object.freeze({
   timeout: '실거래가를 받는 데 시간이 너무 오래 걸려요. 잠시 뒤 다시 해 보세요.',
 });
 
-const fail = (code, detail = '') => new AptError(code, APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api + (detail ? ` (${detail})` : ''));
+// 시트 코드가 알려 준 자세한 이유를 문구 뒤에 붙인다 (원인을 찾기 쉽게). 인증키는 시트 코드가 보내지 않는다.
+const NO_DETAIL = ['no-feature', 'no-sheet', 'no-key', 'network', 'timeout'];
+const fail = (code, detail = '') => {
+  const base = APT_ERROR_MESSAGES[code] ?? APT_ERROR_MESSAGES.api;
+  const reason = String(detail ?? '').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return new AptError(code, reason && !NO_DETAIL.includes(code) ? `${base} (이유: ${reason})` : base);
+};
 
 async function askSheet(sheetUrl, params, { fetchImpl = globalThis.fetch, timeoutMs = APT_TIMEOUT_MS } = {}) {
   if (!sheetUrl) throw fail('no-sheet');
