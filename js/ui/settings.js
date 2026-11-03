@@ -176,6 +176,12 @@ export function connectionReport(data, holdings) {
       ? `시트에 넣지 못한 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 거래소:종목코드 모양(KRX:005930처럼)인지 확인해 주세요.`
       : `시트에 없는 티커 ${missing.length}개: ${missing.slice(0, 5).join(', ')} — 시트 A열에 추가해 주세요.`);
   }
+  // 아파트 실거래가 (선택): 인증키를 넣었는지만 알린다 (경고는 아님)
+  if (data.aptTrades) {
+    lines.push(data.aptKey
+      ? '아파트 실거래가: 인증키가 들어 있어요. 기타 자산 → 부동산에서 아파트를 실거래가로 자동 계산할 수 있어요.'
+      : '아파트 실거래가(선택): 쓰려면 연결 가이드의 "아파트 실거래가로 집값 자동 계산"대로 인증키를 넣어 주세요.');
+  }
   if (!data.canAddTickers) {
     lines.push('시트 코드가 예전 버전이에요. 연결 가이드의 "코드 업데이트"대로 최신 코드로 바꾸면, 보유 종목 티커를 앱이 알아서 시트에 넣어요.');
   }

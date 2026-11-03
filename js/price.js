@@ -69,7 +69,10 @@ export function parseSheetResponse(json, { now = new Date() } = {}) {
   // 이번 요청에서 시트 코드가 새로 넣은 티커. 예전 코드는 features가 없다 (저장해 둔 캐시는 canAddTickers로 읽는다)
   const added = Array.isArray(json.added) ? [...new Set(json.added.map(normalizeTicker).filter(Boolean))] : [];
   const canAddTickers = json.canAddTickers === true || (Array.isArray(json.features) && json.features.includes(ADD_TICKERS_FEATURE));
-  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors], added, canAddTickers };
+  // 아파트 실거래가: 시트 코드가 조회할 수 있는지, 인증키를 스크립트 속성에 넣었는지 (키 자체는 오지 않는다)
+  const aptTrades = json.aptTrades === true || (Array.isArray(json.features) && json.features.includes('apt-trades'));
+  const aptKey = json.aptKey === true;
+  return { updatedAt, fx: { USDKRW: usdkrw }, prices, errors: [...errors], added, canAddTickers, aptTrades, aptKey };
 }
 
 // 시트에 넣어 달라고 보낼 티커: 보유 종목 티커(중복 없이) + 달러 종목이 있으면 환율 줄
@@ -156,6 +159,8 @@ export function buildMarket({ cache, settings }) {
     fx: resolveFx({ sheetRate: data?.fx.USDKRW ?? null, manualRate: settings.manualFxUsdKrw }),
     // 시트 코드가 보유 종목 티커를 알아서 넣을 수 있는지 (최신 Code.gs)
     canAddTickers: Boolean(data?.canAddTickers),
+    aptTrades: Boolean(data?.aptTrades),
+    aptKey: Boolean(data?.aptKey),
   };
 }
 

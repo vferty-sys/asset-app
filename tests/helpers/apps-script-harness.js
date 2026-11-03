@@ -121,8 +121,11 @@ export class FakeSheet {
   autoResizeColumns() {}
 }
 
-export function load(sheets) {
-  const calls = { flush: 0, sleep: [], locks: 0 };
+// options.properties: 스크립트 속성 { 이름: 값 }, options.fetch(url) → { status, body }: 바깥 요청(UrlFetchApp) 흉내
+export function load(sheets, { properties = {}, fetch = null } = {}) {
+  const calls = { flush: 0, sleep: [], locks: 0, fetches: [], logs: [] };
+  const props = { ...properties };
+  const cacheStore = new Map();
   const spreadsheet = {
     sheets,
     getSheetByName: (name) => sheets.find((sheet) => sheet.name === name) ?? null,
@@ -143,13 +146,33 @@ export function load(sheets) {
       computeDigest: (algorithm, value) => [...createHash(algorithm).update(String(value), 'utf8').digest()],
       base64Encode: (bytes) => Buffer.from(bytes).toString('base64'),
     },
+    PropertiesService: {
+      getScriptProperties: () => ({
+        getProperty: (key) => (Object.hasOwn(props, key) ? props[key] : null),
+        setProperty: (key, value) => { props[key] = String(value); },
+      }),
+    },
+    CacheService: {
+      getScriptCache: () => ({
+        get: (key) => (cacheStore.has(key) ? cacheStore.get(key) : null),
+        put: (key, value) => { cacheStore.set(key, value); },
+      }),
+    },
+    UrlFetchApp: {
+      fetchAll: (requests) => requests.map((request) => {
+        calls.fetches.push(request.url);
+        const answer = fetch ? fetch(request.url) : { status: 500, body: '' };
+        return { getResponseCode: () => answer.status, getContentText: () => answer.body };
+      }),
+    },
+    Logger: { log: (message) => calls.logs.push(String(message)) },
     ContentService: {
       MimeType: { JSON: 'application/json' },
       createTextOutput: (text) => ({ setMimeType: (mimeType) => ({ text, mimeType }) }),
     },
   });
   vm.runInContext(CODE, context);
-  return { context, spreadsheet, calls };
+  return { context, spreadsheet, calls, properties: props, cache: cacheStore };
 }
 
 // 웹 앱 주소로 오는 요청을 Code.gs의 doGet·doPost로 보내는 가짜 fetch (브라우저 fetch와 같은 모양으로 답한다)

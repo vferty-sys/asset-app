@@ -71,7 +71,7 @@ test('티커 자동 추가: 시트에 없는 티커만 A열 끝에 넣고 B·C�
   const { context, calls } = load([sheet]);
   const json = getWith(context, 'krx:005930, NYSEARCA:SCHD,KRX:0085P0,NYSEARCA:SCHD,삼성전자,KRX:,=IMPORTXML("x"),CURRENCY:JPYKRW');
   assert.deepEqual(json.added, ['NYSEARCA:SCHD', 'KRX:0085P0', 'CURRENCY:JPYKRW']);
-  assert.deepEqual(json.features, ['add-tickers']);
+  assert.ok(json.features.includes('add-tickers'));
   assert.deepEqual(sheet.getRange(4, 1, 3, 1).getValues().flat(), ['NYSEARCA:SCHD', 'KRX:0085P0', 'CURRENCY:JPYKRW']);
   assert.equal(sheet.cell(4, 2).formula, '=GOOGLEFINANCE(A4, "price")');
   assert.equal(sheet.cell(4, 3).formula, '=GOOGLEFINANCE(A4, "currency")');
@@ -92,7 +92,7 @@ test('티커 자동 추가: 모두 이미 있으면 아무것도 바꾸지 않�
   const json = getWith(context, 'KRX:005930,nasdaq:qqq');
   assert.deepEqual(json.added, []);
   assert.equal(sheet.getLastRow(), 3);
-  assert.deepEqual(calls, { flush: 0, sleep: [], locks: 0 });
+  assert.deepEqual({ flush: calls.flush, sleep: calls.sleep, locks: calls.locks }, { flush: 0, sleep: [], locks: 0 });
   // tickers 없이 부르면 예전처럼 읽기만
   assert.deepEqual(JSON.parse(context.doGet().text).added, []);
 });

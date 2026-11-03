@@ -9,6 +9,7 @@ import {
 import { createSyncEngine, dataStorageFor, readSyncConfig } from './sync.js';
 import { getMarket, initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
 import { sheetTickers, unknownSheetTickers } from './price.js';
+import { fetchAptPrice } from './apt-price.js';
 import { initInstall } from './install.js';
 import { el, clear, closeAllModals, showToast } from './dom.js';
 import { mountPriceStatus } from './ui/price-status.js';
@@ -37,6 +38,8 @@ const DEFAULT_VIEW = 'dashboard';
 
 // 앱을 다시 펼쳤을 때 마지막 시세가 이보다 오래됐으면 새로 받는다.
 const PRICE_STALE_MS = 15 * 60 * 1000;
+// 아파트 실거래가는 일주일에 한 번 새로 받는다 (실거래 자료는 한 달 단위로 쌓인다)
+const APT_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
 // 보유 종목을 추가해 시트에 없는 티커가 생기면 잠시 뒤(여러 종목을 연달아 넣을 수 있게) 시트에 넣고 시세를 받는다
 const ADD_TICKERS_DELAY_MS = 1500;
 // 기기 연동: 화면을 보고 있는 동안 이 간격으로 다른 기기가 저장했는지 확인한다.
@@ -120,6 +123,8 @@ async function updatePrices(sheetUrl, { quiet = false } = {}) {
   const result = await refreshPrices(sheetUrl, { tickers: sheetTickers(getState().holdings) });
   if (result.error && !quiet) showToast(`새 시세를 받지 못했어요. ${result.error.message}`, 'danger', 5000);
   else if (result.added?.length > 0) showToast(`시트에 새 종목 ${result.added.length}개를 넣었어요. 가격은 몇 초 뒤에 들어와요.`);
+  // 시세를 받은 뒤, 일주일이 지난 아파트 실거래가도 새로 받는다
+  if (result.ok) refreshApartmentPrices();
 }
 
 function watchPrices() {
@@ -157,6 +162,39 @@ function watchPrices() {
     const fetchedAt = Date.parse(lastFetchedAt(sheetUrl) ?? '');
     if (!Number.isFinite(fetchedAt) || Date.now() - fetchedAt > PRICE_STALE_MS) updatePrices(sheetUrl, { quiet: true });
   });
+}
+
+// 실거래가로 자동 계산하는 아파트 중 일주일이 지난 것을 새로 받는다 (시세를 받은 뒤 조용히).
+// 받지 못하면 마지막으로 받은 평균을 그대로 쓴다. 시트 코드가 실거래가를 못 하거나 인증키가 없으면 하지 않는다.
+let aptRefreshing = false;
+async function refreshApartmentPrices() {
+  if (aptRefreshing) return;
+  aptRefreshing = true;
+  try {
+    await refreshDueApartments();
+  } finally {
+    aptRefreshing = false;
+  }
+}
+
+async function refreshDueApartments() {
+  const state = getState();
+  const { sheetUrl } = state.settings;
+  const market = getMarket(state);
+  if (!sheetUrl || !market.aptTrades || !market.aptKey) return;
+  const due = state.realEstate.filter((item) => item.auto
+    && !(Date.now() - Date.parse(item.market?.fetchedAt ?? '') < APT_REFRESH_MS));
+  for (const item of due) {
+    try {
+      const fresh = await fetchAptPrice(sheetUrl, item.auto);
+      updateState((draft) => {
+        const target = draft.realEstate.find((entry) => entry.id === item.id);
+        if (target?.auto) target.market = fresh;
+      });
+    } catch {
+      return; // 인증키·사용량 문제면 다음 것도 안 되므로 멈춘다 (화면에는 마지막 값)
+    }
+  }
 }
 
 // 화면 위 안내: 시작할 때 생긴 저장소 문제, 샘플 데이터로 둘러보는 중, 기기 연동(비밀번호 필요·부딪힘·오류)
