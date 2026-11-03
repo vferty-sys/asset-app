@@ -118,11 +118,20 @@ export function aptLabel(market) {
   return `최근 ${market.months}개월 거래 ${market.count}건 평균${range ? ` (${range})` : ''}`;
 }
 
-// 전용면적 '84.97㎡ (약 26평)'
+// 1평 = 3.3058㎡. 흔히 부르는 '34평형'은 공급면적(전용 + 계단·복도 같은 공용 부분) 기준이라,
+// 실거래가 자료의 전용면적에 보통 아파트의 공급/전용 비율(약 1.32)을 곱해 어림한다. (전용 84㎡ ≈ 34평형, 59㎡ ≈ 24평형)
+const PYEONG_M2 = 3.3058;
+const SUPPLY_PER_EXCLUSIVE = 1.32;
+export function pyeongType(area) {
+  const value = Number(area);
+  return value > 0 ? Math.round((value * SUPPLY_PER_EXCLUSIVE) / PYEONG_M2) : null;
+}
+
+// 전용면적 '84.97㎡ (약 34평형)'
 export function areaText(area) {
   const value = Number(area);
   if (!(value > 0)) return '';
-  return `${value.toFixed(2)}㎡ (약 ${Math.round(value / 3.3058)}평)`;
+  return `${value.toFixed(2)}㎡ (약 ${pyeongType(value)}평형)`;
 }
 
 // 시·군·구 목록: [{ code, sido, name }]

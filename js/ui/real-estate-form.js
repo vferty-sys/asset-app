@@ -19,7 +19,12 @@ const VALUE_HELP = [
 const AUTO_HELP = [
   '국토교통부 아파트 매매 실거래가로 같은 단지·같은 전용면적의 최근 3개월 거래 평균을 써요. 3개월 동안 거래가 없으면 6개월, 12개월로 넓혀요.',
   '계약했다가 해제(취소)된 거래는 빼요. 일주일에 한 번 새로 받아와요.',
+  '평형은 흔히 부르는 공급면적 기준 어림값이에요(전용 84㎡ ≈ 34평형). 단지마다 1평쯤 다를 수 있어요.',
 ];
+
+// 두 단지·전용면적이 같은지 (지금 보여 주는 실거래가가 고른 것과 맞는지 확인용)
+const sameTarget = (a, b) => Boolean(a && b) && a.lawd === b.lawd && (a.apt ?? '') === (b.apt ?? '') && a.name === b.name
+  && (a.dong ?? '') === (b.dong ?? '') && Math.abs(Number(a.area) - Number(b.area)) < 0.005;
 
 const money = (value) => formatMoney(value);
 
@@ -119,44 +124,98 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     districts.filter((district) => district.sido === sidoSelect.value)
       .forEach((district) => districtSelect.append(el('option', { value: district.code, text: district.name })));
   }
-  sidoSelect.addEventListener('change', fillDistricts);
+  // 지역을 바꾸면 전에 찾은 단지 목록은 그 지역 것이 아니므로 지운다
+  function resetComplexes() {
+    complexes = [];
+    complexLawd = '';
+    complexBox.hidden = true;
+    clear(complexSelect);
+    fillAreas();
+    selectionChanged();
+  }
+  sidoSelect.addEventListener('change', () => { fillDistricts(); resetComplexes(); });
+  districtSelect.addEventListener('change', resetComplexes);
 
   // 단지 찾기 → 단지 → 전용면적
   let complexes = [];
+  let complexLawd = '';
   const complexBox = pickers.querySelector('.apt-complex');
+  const selectedComplex = () => (complexSelect.value === '' ? null : complexes[Number(complexSelect.value)] ?? null);
   function fillComplexes() {
     const word = complexFilter.value.trim().replace(/\s/g, '');
+    const keep = complexSelect.value;
     clear(complexSelect);
     complexSelect.append(el('option', { value: '', text: complexes.length ? '단지를 골라 주세요' : '최근 1년 거래가 없어요' }));
     complexes.forEach((complex, index) => {
       if (word && !complex.name.replace(/\s/g, '').includes(word)) return;
       complexSelect.append(el('option', { value: String(index), text: `${complex.name}${complex.dong ? ` (${complex.dong})` : ''} · 거래 ${complex.count}건` }));
     });
+    // 좁힌 뒤에도 고른 단지가 목록에 있으면 그대로 두고, 없어지면 전용면적도 다시 고르게 한다
+    if (keep && [...complexSelect.options].some((option) => option.value === keep)) {
+      complexSelect.value = keep;
+    } else if (keep) {
+      fillAreas();
+      selectionChanged();
+    }
   }
   complexFilter.addEventListener('input', fillComplexes);
   function fillAreas() {
     clear(areaSelect);
     areaSelect.append(el('option', { value: '', text: '전용면적' }));
-    const complex = complexes[Number(complexSelect.value)];
+    const complex = selectedComplex();
     (complex?.areas ?? []).forEach((area) => areaSelect.append(el('option', { value: String(area.area), text: `${areaText(area.area)} · 거래 ${area.count}건` })));
     if (complex?.areas.length === 1) areaSelect.value = String(complex.areas[0].area);
   }
-  complexSelect.addEventListener('change', fillAreas);
+  complexSelect.addEventListener('change', () => { fillAreas(); selectionChanged(); });
+  areaSelect.addEventListener('change', selectionChanged);
+
+  // 단지 찾기로 지금 고른 단지·전용면적. 덜 골랐으면 null
+  function pickedTarget() {
+    const complex = selectedComplex();
+    const area = Number(areaSelect.value);
+    if (!complex || !(area > 0) || !complexLawd) return null;
+    const district = districts.find((entry) => entry.code === complexLawd);
+    return {
+      lawd: complexLawd, district: district ? `${district.sido} ${district.name}` : '', apt: complex.apt ?? '', name: complex.name, dong: complex.dong ?? '', area,
+    };
+  }
+  // 단지를 고르는 중인데 보여 주는 실거래가가 그 단지·전용면적 것이 아니면 true
+  const pickingOther = () => selectedComplex() != null && !sameTarget(pickedTarget(), auto);
+
+  // 단지나 전용면적을 바꾸면: 예전 결과는 감추고, 전용면적까지 골랐으면 바로 새로 받아온다
+  function selectionChanged() {
+    autoError.hidden = true;
+    const target = pickedTarget();
+    if (target && !sameTarget(target, auto)) loadPrice(target);
+    else {
+      // 덜 골랐거나 이미 보여 주는 것으로 되돌아왔으면, 받는 중이던 예전 요청의 답은 쓰지 않는다
+      priceRequest += 1;
+      priceButton.disabled = false;
+      setStatus(!target && selectedComplex() ? '전용면적을 골라 주세요.' : '');
+    }
+    refreshAuto();
+  }
 
   findButton.addEventListener('click', async () => {
     if (!districtSelect.value) {
       setStatus('시·도와 시·군·구를 먼저 골라 주세요.', 'warn-text');
       return;
     }
+    const lawd = districtSelect.value;
     findButton.disabled = true;
     setStatus('최근 1년 동안 거래된 단지를 찾는 중이에요… (10초쯤 걸려요)');
     try {
-      complexes = await fetchAptComplexes(sheetUrl, districtSelect.value);
+      const found = await fetchAptComplexes(sheetUrl, lawd);
+      if (districtSelect.value !== lawd) return; // 그사이 다른 지역을 골랐으면 버린다
+      complexes = found;
+      complexLawd = lawd;
       complexBox.hidden = false;
       complexFilter.value = '';
+      clear(complexSelect);
       fillComplexes();
       fillAreas();
-      setStatus(`단지 ${complexes.length}곳을 찾았어요. 단지와 전용면적을 골라 주세요.`);
+      selectionChanged();
+      setStatus(`단지 ${complexes.length}곳을 찾았어요. 단지와 전용면적을 고르면 실거래가를 바로 받아와요.`);
       complexFilter.focus();
     } catch (error) {
       setStatus(error.message ?? APT_ERROR_MESSAGES.api, 'warn-text');
@@ -165,38 +224,44 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     }
   });
 
-  priceButton.addEventListener('click', async () => {
-    const complex = complexes[Number(complexSelect.value)];
-    let target = auto;
-    if (complex) {
-      if (!areaSelect.value) {
-        setStatus('전용면적을 골라 주세요.', 'warn-text');
-        return;
-      }
-      const district = districts.find((entry) => entry.code === districtSelect.value);
-      target = {
-        lawd: districtSelect.value, district: district ? `${district.sido} ${district.name}` : '', apt: complex.apt ?? '', name: complex.name, dong: complex.dong ?? '', area: Number(areaSelect.value),
-      };
-    }
-    if (!target) {
-      setStatus('"단지 찾기"로 단지와 전용면적을 먼저 골라 주세요.', 'warn-text');
-      return;
-    }
+  // 실거래가 받아오기. 여러 번 바꿔 고르면 마지막으로 고른 것의 답만 쓴다
+  let priceRequest = 0;
+  async function loadPrice(target) {
+    priceRequest += 1;
+    const request = priceRequest;
     priceButton.disabled = true;
-    setStatus('실거래가를 받는 중이에요…');
+    setStatus(`${target.name} 전용 ${areaText(target.area)} 실거래가를 받는 중이에요…`);
     try {
-      market = await fetchAptPrice(sheetUrl, target);
+      const next = await fetchAptPrice(sheetUrl, target);
+      if (request !== priceRequest) return;
+      const name = nameField.control.value.trim();
+      if (!name || name === auto?.name) nameField.control.value = target.name; // 단지명으로 채운 이름이면 새 단지명으로
+      market = next;
       auto = target;
       showCurrent();
       showResult();
       autoError.hidden = true;
       setStatus('');
-      if (!nameField.control.value.trim()) nameField.control.value = target.name;
+      refreshAuto();
     } catch (error) {
+      if (request !== priceRequest) return;
       setStatus(error.message ?? APT_ERROR_MESSAGES.api, 'warn-text');
     } finally {
-      priceButton.disabled = false;
+      if (request === priceRequest) priceButton.disabled = false;
     }
+  }
+
+  priceButton.addEventListener('click', () => {
+    if (selectedComplex() && !areaSelect.value) {
+      setStatus('전용면적을 골라 주세요.', 'warn-text');
+      return;
+    }
+    const target = pickedTarget() ?? auto;
+    if (!target) {
+      setStatus('"단지 찾기"로 단지와 전용면적을 먼저 골라 주세요.', 'warn-text');
+      return;
+    }
+    loadPrice(target);
   });
 
   function refreshAuto() {
@@ -205,8 +270,10 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     const on = apartment && autoToggle.control.checked;
     autoToggle.control.disabled = !aptReady && !auto;
     pickers.hidden = !on || !aptReady;
-    current.hidden = !on || !auto;
-    result.hidden = !on || !market;
+    // 다른 단지·전용면적을 고르는 중이면 예전 결과는 감춘다 (헷갈리지 않게)
+    const stale = pickingOther();
+    current.hidden = !on || !auto || stale;
+    result.hidden = !on || !market || stale;
     valueField.element.querySelector('.field-label').textContent = on ? '직접 적는 시세 (거래가 없을 때 사용, 선택)' : '시세';
   }
   kindField.control.addEventListener('change', refreshAuto);
@@ -241,6 +308,14 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     if (useAuto && !auto) {
       autoError.hidden = false;
       autoError.textContent = '"단지 찾기"로 단지와 전용면적을 고르고 "실거래가 받아오기"를 눌러 주세요. 직접 적으려면 자동 계산을 끄세요.';
+      return;
+    }
+    // 새로 고른 단지·전용면적의 실거래가를 아직 못 받았으면, 예전 것으로 저장하지 않는다
+    if (useAuto && aptReady && pickingOther()) {
+      autoError.hidden = false;
+      autoError.textContent = pickedTarget()
+        ? '고른 단지·전용면적의 실거래가를 아직 받지 못했어요. 잠시 기다리거나 "실거래가 받아오기"를 눌러 주세요.'
+        : '전용면적까지 골라 주세요. 실거래가를 바로 받아와요.';
       return;
     }
     if (!checked.ok) {

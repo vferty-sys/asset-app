@@ -13,7 +13,10 @@ test('표시: 최근 몇 개월 몇 건 평균과 기간, 전용면적과 평', 
   assert.equal(aptLabel({ average: 1, months: 3, count: 4, from: '202609', to: '202611' }), '최근 3개월 거래 4건 평균 (2026년 9월~11월)');
   assert.equal(aptLabel({ average: 1, months: 12, count: 1, from: '202512', to: '202611' }), '최근 12개월 거래 1건 평균 (2025년 12월~2026년 11월)');
   assert.equal(aptLabel({ average: null }), '');
-  assert.equal(areaText(84.97), '84.97㎡ (약 26평)');
+  // 평형은 흔히 부르는 공급면적 기준 (전용 84㎡ ≈ 34평형, 59㎡ ≈ 24평형)
+  assert.equal(areaText(84.97), '84.97㎡ (약 34평형)');
+  assert.equal(areaText(59.99), '59.99㎡ (약 24평형)');
+  assert.equal(areaText(114.9), '114.90㎡ (약 46평형)');
   assert.equal(areaText(0), '');
 });
 
