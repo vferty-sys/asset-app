@@ -2505,3 +2505,17 @@
 .apt-current {
   font-weight: 600;
 }
+
+/* 총자산에 부동산 넣기/빼기 (대시보드) */
+.hero-scope {
+  justify-self: start;
+  grid-auto-columns: auto;
+  padding: 3px;
+}
+
+.hero-scope .segmented-option span {
+  min-height: 30px;
+  padding: 0 12px;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}

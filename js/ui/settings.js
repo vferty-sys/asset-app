@@ -37,6 +37,11 @@ const SECTIONS = [
         key: 'invertPnlColors', label: '손익 색상', kind: 'select',
         options: [[false, '수익 빨강 · 손실 파랑 (한국식)'], [true, '수익 파랑 · 손실 빨강']],
       },
+      {
+        key: 'totalIncludesRealEstate', label: '대시보드 총자산', kind: 'select',
+        options: [[false, '부동산 빼고 (금융자산만)'], [true, '부동산(집값) 포함']],
+        help: '대시보드의 총자산에 부동산을 넣을지 골라요. 대시보드 총자산 칸의 버튼으로도 바꿀 수 있어요. 순자산은 어느 쪽이든 부동산을 넣어 계산해요.',
+      },
     ],
   },
   {

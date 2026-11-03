@@ -113,6 +113,8 @@ export const SETTINGS_SCHEMA = Object.freeze({
   displayUnit: { type: 'enum', options: ['auto', 'won', 'man'], default: 'auto' },
   theme: { type: 'enum', options: ['system', 'light', 'dark'], default: 'system' },
   invertPnlColors: { type: 'boolean', default: false },
+  // 대시보드 총자산에 부동산(집값)을 넣을지 (순자산은 어느 쪽이든 부동산을 넣어 계산)
+  totalIncludesRealEstate: { type: 'boolean', default: false },
 });
 
 export const DEFAULT_SETTINGS = Object.freeze(
