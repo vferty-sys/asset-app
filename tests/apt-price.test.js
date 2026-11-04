@@ -1,7 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { AptError, aptLabel, areaText, fetchAptComplexes, fetchAptPrice, marketFromResponse } from '../js/apt-price.js';
+import {
+  AptError, aptLabel, areaText, autoAreaText, fetchAptComplexes, fetchAptPrice, groupAreasByPyeong, marketFromResponse,
+} from '../js/apt-price.js';
 import { normalizeRealEstate, realEstateTotal, realEstateValue, validateRealEstate } from '../js/real-estate.js';
 import { FakeSheet, fakeWebAppFetch, load } from './helpers/apps-script-harness.js';
 
@@ -18,6 +20,24 @@ test('표시: 최근 몇 개월 몇 건 평균과 기간, 전용면적과 평', 
   assert.equal(areaText(59.99), '59.99㎡ (약 24평형)');
   assert.equal(areaText(114.9), '114.90㎡ (약 46평형)');
   assert.equal(areaText(0), '');
+});
+
+test('같은 평형의 여러 전용면적: 평형별로 묶고, "OO평형 전체"는 전용면적을 모두 보낸다', async () => {
+  const groups = groupAreasByPyeong([{ area: 84.99, count: 2 }, { area: 59.96, count: 4 }, { area: 84.92, count: 3 }, { area: 84.97, count: 7 }]);
+  assert.deepEqual(groups.map((group) => [group.pyeong, group.count, group.areas.map((entry) => entry.area)]), [[24, 4, [59.96]], [34, 12, [84.92, 84.97, 84.99]]]);
+  assert.equal(autoAreaText(auto), '전용 84.97㎡ (약 34평형)');
+  const combined = { ...auto, areas: [84.92, 84.97, 84.99] };
+  assert.equal(autoAreaText(combined), '약 34평형 전체 (전용 84.92·84.97·84.99㎡)');
+  const urls = [];
+  const capture = async (url) => { urls.push(new URL(url)); return new Response(JSON.stringify({ windows: [], used: null, trades: [] })); };
+  await fetchAptPrice(SHEET, auto, { fetchImpl: capture });
+  await fetchAptPrice(SHEET, combined, { fetchImpl: capture });
+  assert.equal(urls[0].searchParams.get('area'), '84.97');
+  assert.equal(urls[0].searchParams.has('areas'), false, '하나만 고르면 areas 없음');
+  assert.equal(urls[1].searchParams.get('areas'), '84.92,84.97,84.99');
+  // 저장: 여러 전용면적은 그대로 두고, 하나뿐이면 areas는 버린다
+  assert.deepEqual(normalizeRealEstate({ name: 'A', value: 1, auto: { ...combined, areas: [84.99, 84.92, 84.97, 84.92, 'x'] } }).auto.areas, [84.92, 84.97, 84.99]);
+  assert.equal('areas' in normalizeRealEstate({ name: 'A', value: 1, auto: { ...auto, areas: [84.97] } }).auto, false);
 });
 
 test('시트 코드 응답 → 저장할 market (거래가 없으면 평균 없음)', () => {

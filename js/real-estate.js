@@ -1,6 +1,7 @@
 // 부동산(집 등) 데이터 정리와 입력 검증.
 //  value: 직접 적은 시세(원, 기준일 baseDate). 1년에 한두 번 고친다.
-//  auto: 아파트 실거래가로 자동 계산할 단지 { lawd(시·군·구 코드), district(이름), apt(단지 일련번호), name, dong, area(전용면적 ㎡) }
+//  auto: 아파트 실거래가로 자동 계산할 단지 { lawd(시·군·구 코드), district(이름), apt(단지 일련번호), name, dong, area(전용면적 ㎡),
+//        areas(선택: 'OO평형 전체'로 합쳐 볼 전용면적들) }
 //  market: 마지막으로 받은 실거래가 평균 { average, months, count, min, max, from, to, trades, fetchedAt }
 //          평균이 있으면 그 값을, 없으면(1년 동안 거래 없음) 직접 적은 값을 쓴다.
 
@@ -23,7 +24,10 @@ const positiveOrNull = (value) => (typeof value === 'number' && Number.isFinite(
 
 function normalizeAuto(raw) {
   if (!isPlainObject(raw) || !/^\d{5}$/.test(String(raw.lawd ?? '')) || !(raw.area > 0) || (!raw.apt && !raw.name)) return null;
-  return { lawd: String(raw.lawd), district: text(raw.district), apt: text(raw.apt, 40), name: text(raw.name), dong: text(raw.dong, 40), area: Number(raw.area) };
+  const auto = { lawd: String(raw.lawd), district: text(raw.district), apt: text(raw.apt, 40), name: text(raw.name), dong: text(raw.dong, 40), area: Number(raw.area) };
+  const areas = Array.isArray(raw.areas) ? [...new Set(raw.areas.map(Number).filter((value) => Number.isFinite(value) && value > 0))].sort((a, b) => a - b).slice(0, 10) : [];
+  if (areas.length > 1) auto.areas = areas;
+  return auto;
 }
 
 function normalizeMarket(raw) {

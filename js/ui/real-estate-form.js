@@ -6,7 +6,9 @@
 import { REAL_ESTATE_KINDS } from '../constants.js';
 import { todayString } from '../dates.js';
 import { realEstateToInput, validateRealEstate } from '../real-estate.js';
-import { APT_ERROR_MESSAGES, aptLabel, areaText, fetchAptComplexes, fetchAptPrice, loadDistricts } from '../apt-price.js';
+import {
+  APT_ERROR_MESSAGES, aptLabel, areaText, autoAreaText, fetchAptComplexes, fetchAptPrice, groupAreasByPyeong, loadDistricts,
+} from '../apt-price.js';
 import { getMarket } from '../market.js';
 import { el, clear, confirmDialog, openModal, showToast, uid } from '../dom.js';
 import { formatDate, formatMoney } from '../format.js';
@@ -20,11 +22,13 @@ const AUTO_HELP = [
   '국토교통부 아파트 매매 실거래가로 같은 단지·같은 전용면적의 최근 3개월 거래 평균을 써요. 3개월 동안 거래가 없으면 6개월, 12개월로 넓혀요.',
   '계약했다가 해제(취소)된 거래는 빼요. 일주일에 한 번 새로 받아와요.',
   '평형은 흔히 부르는 공급면적 기준 어림값이에요(전용 84㎡ ≈ 34평형). 단지마다 1평쯤 다를 수 있어요.',
+  '같은 평형이라도 전용면적이 다르면(84.92·84.97㎡처럼) 구조가 다른 타입이라 따로 계산해요. "OO평형 전체"를 고르면 합쳐서 평균을 내요.',
 ];
 
 // 두 단지·전용면적이 같은지 (지금 보여 주는 실거래가가 고른 것과 맞는지 확인용)
+const areasKey = (target) => (target.areas?.length > 1 ? target.areas : [target.area]).map((value) => Number(value).toFixed(2)).join(',');
 const sameTarget = (a, b) => Boolean(a && b) && a.lawd === b.lawd && (a.apt ?? '') === (b.apt ?? '') && a.name === b.name
-  && (a.dong ?? '') === (b.dong ?? '') && Math.abs(Number(a.area) - Number(b.area)) < 0.005;
+  && (a.dong ?? '') === (b.dong ?? '') && areasKey(a) === areasKey(b);
 
 const money = (value) => formatMoney(value);
 
@@ -57,6 +61,11 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
   complexSelect.setAttribute('aria-label', '단지');
   const areaSelect = selectInput([], '', { placeholder: '전용면적' });
   areaSelect.setAttribute('aria-label', '전용면적');
+  // 예전 시트 코드는 비슷한 전용면적(±1㎡)을 합쳐서 계산한다
+  const oldSheetNote = sheet.aptAreas ? null : el('p', {
+    class: 'muted small',
+    text: '지금 시트 코드는 비슷한 전용면적(±1㎡) 거래를 합쳐서 계산해요. 연결 가이드의 "코드 업데이트하기"대로 최신 코드로 바꾸면 전용면적별로 정확히 나눠 계산해요.',
+  });
   const priceButton = el('button', { type: 'button', class: 'btn btn-small btn-primary', text: '실거래가 받아오기' });
   const status = el('p', { class: 'apt-status small', role: 'status', hidden: true });
   const current = el('p', { class: 'apt-current small', hidden: true });
@@ -65,7 +74,7 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
   const pickers = el('div', { class: 'apt-pickers' },
     el('div', { class: 'apt-row' }, sidoSelect, districtSelect),
     el('div', { class: 'apt-row' }, findButton),
-    el('div', { class: 'apt-complex', hidden: true }, complexFilter, complexSelect, areaSelect),
+    el('div', { class: 'apt-complex', hidden: true }, complexFilter, complexSelect, areaSelect, oldSheetNote),
     el('div', { class: 'apt-row' }, priceButton));
   const notReady = el('p', { class: 'muted small' },
     !sheetUrl ? '구글 시트를 연결하면 실거래가를 받을 수 있어요. ' : !sheet.aptTrades ? '시트 코드를 최신으로 바꾸면 실거래가를 받을 수 있어요. ' : '시트 코드에 공공데이터 인증키를 넣으면 실거래가를 받을 수 있어요. ',
@@ -101,7 +110,7 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
 
   function showCurrent() {
     current.hidden = !auto;
-    current.textContent = auto ? `고른 단지: ${auto.name}${auto.dong ? ` (${auto.dong})` : ''} · 전용 ${areaText(auto.area)}${auto.district ? ` · ${auto.district}` : ''}` : '';
+    current.textContent = auto ? `고른 단지: ${auto.name}${auto.dong ? ` (${auto.dong})` : ''} · ${autoAreaText(auto)}${auto.district ? ` · ${auto.district}` : ''}` : '';
   }
 
   // 시·도 → 시·군·구
@@ -159,25 +168,46 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     }
   }
   complexFilter.addEventListener('input', fillComplexes);
+  // 전용면적을 평형별로 묶어 보여 준다. 같은 평형에 전용면적이 여러 개(타입이 다름)면
+  // 각각 따로 고를 수도 있고, 'OO평형 전체'로 합쳐서 평균을 낼 수도 있다. 건수는 최근 1년 거래 수.
   function fillAreas() {
     clear(areaSelect);
     areaSelect.append(el('option', { value: '', text: '전용면적' }));
     const complex = selectedComplex();
-    (complex?.areas ?? []).forEach((area) => areaSelect.append(el('option', { value: String(area.area), text: `${areaText(area.area)} · 거래 ${area.count}건` })));
+    for (const group of groupAreasByPyeong(complex?.areas)) {
+      if (group.areas.length === 1) {
+        const [only] = group.areas;
+        areaSelect.append(el('option', { value: String(only.area), text: `${areaText(only.area)} · 1년 거래 ${only.count}건` }));
+        continue;
+      }
+      const options = group.areas.map((entry) => el('option', { value: String(entry.area), text: `전용 ${entry.area.toFixed(2)}㎡ · 1년 거래 ${entry.count}건` }));
+      if (sheet.aptAreas) {
+        options.unshift(el('option', {
+          value: group.areas.map((entry) => entry.area).join(','),
+          text: `약 ${group.pyeong}평형 전체 (전용면적 ${group.areas.length}가지 합쳐서) · 1년 거래 ${group.count}건`,
+        }));
+      }
+      areaSelect.append(el('optgroup', { label: `약 ${group.pyeong}평형` }, options));
+    }
     if (complex?.areas.length === 1) areaSelect.value = String(complex.areas[0].area);
   }
   complexSelect.addEventListener('change', () => { fillAreas(); selectionChanged(); });
   areaSelect.addEventListener('change', selectionChanged);
 
   // 단지 찾기로 지금 고른 단지·전용면적. 덜 골랐으면 null
+  //  'OO평형 전체'면 areas에 그 전용면적들, area에는 거래가 가장 많은 전용면적 (예전 시트 코드는 area만 안다)
   function pickedTarget() {
     const complex = selectedComplex();
-    const area = Number(areaSelect.value);
-    if (!complex || !(area > 0) || !complexLawd) return null;
+    const areas = areaSelect.value.split(',').map(Number).filter((value) => value > 0);
+    if (!complex || !areas.length || !complexLawd) return null;
     const district = districts.find((entry) => entry.code === complexLawd);
-    return {
-      lawd: complexLawd, district: district ? `${district.sido} ${district.name}` : '', apt: complex.apt ?? '', name: complex.name, dong: complex.dong ?? '', area,
+    const counts = new Map((complex.areas ?? []).map((entry) => [Number(entry.area), entry.count]));
+    const main = areas.reduce((best, value) => ((counts.get(value) ?? 0) > (counts.get(best) ?? 0) ? value : best), areas[0]);
+    const target = {
+      lawd: complexLawd, district: district ? `${district.sido} ${district.name}` : '', apt: complex.apt ?? '', name: complex.name, dong: complex.dong ?? '', area: main,
     };
+    if (areas.length > 1) target.areas = areas;
+    return target;
   }
   // 단지를 고르는 중인데 보여 주는 실거래가가 그 단지·전용면적 것이 아니면 true
   const pickingOther = () => selectedComplex() != null && !sameTarget(pickedTarget(), auto);
@@ -230,7 +260,7 @@ export function openRealEstateForm({ item = null, getState, updateState }) {
     priceRequest += 1;
     const request = priceRequest;
     priceButton.disabled = true;
-    setStatus(`${target.name} 전용 ${areaText(target.area)} 실거래가를 받는 중이에요…`);
+    setStatus(`${target.name} ${autoAreaText(target)} 실거래가를 받는 중이에요…`);
     try {
       const next = await fetchAptPrice(sheetUrl, target);
       if (request !== priceRequest) return;
