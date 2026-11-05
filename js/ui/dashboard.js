@@ -2,6 +2,7 @@
 // 건강도 점수와 쏠림 경고 요약, 확인할 것(1년 넘게 고치지 않은 항목·시세 문제), 월별 기록과 총자산 추이
 
 import { STALE_AFTER_DAYS } from '../constants.js';
+import { dividendBasis } from '../dividends.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { analyzeDiversification, concentrationAlerts, holdingWeights } from '../calc/diversification.js';
 import { scorePortfolio } from '../calc/score.js';
@@ -34,7 +35,10 @@ const HELP = {
     '부동산은 직접 적은 시세, 대출은 기준일 금액에서 갚은 만큼 뺀 오늘 남은 원금으로 계산해요.',
   ],
   loanPayment: '대출마다 다음에 갚을 돈(원금 + 이자)을 더한 금액이에요. 원리금균등은 매달 같고, 원금균등은 점점 줄어요.',
-  dividend: '보유 종목에 입력한 "연간 주당 배당금 × 수량"을 더한 값이에요. 배당수익률은 연 배당금 ÷ 투자자산이에요.',
+  dividend: [
+    '보유 종목의 "1주당 연 배당금 × 수량"을 더한 올해 예상 배당금이에요. 1주당 연 배당금은 작년 1년 동안 실제로 받은 배당을 더한 값을 써요(시트 연결 시 자동).',
+    '종목 수정에서 "직접 적기"를 켠 종목은 적은 값을 써요. 배당수익률은 연 배당금 ÷ 투자자산이에요. 실제 배당은 회사 사정에 따라 달라질 수 있어요.',
+  ],
   score: '주식이 한쪽에 쏠리지 않고 잘 나뉘어 있는지 100점 만점으로 매긴 점수예요. 항목별 점수와 이유는 분산 분석에서 볼 수 있어요.',
   trend: [
     '한 달에 한 번 그때의 총자산을 기록해 두고 막대로 보여드려요. 같은 달에 다시 기록하면 그 달 기록을 바꿔요.',
@@ -209,14 +213,19 @@ function dividendTile(state, portfolio, money) {
     return tile({
       ...base,
       value: EMPTY,
-      subs: [state.holdings.length > 0 ? '보유 종목에 연간 주당 배당금을 넣으면 계산해요.' : '보유 종목을 입력하면 보여요.'],
+      subs: [state.holdings.length === 0 ? '보유 종목을 입력하면 보여요.'
+        : state.settings.sheetUrl ? '작년에 배당을 받은 종목이 아직 없어요.' : '구글 시트를 연결하면 작년 배당금을 자동으로 넣어요.'],
       link: { href: '#holdings', text: '보유 종목 보기' },
     });
   }
   return tile({
     ...base,
     value: `연 ${money(portfolio.annualDividend)}`,
-    subs: [`월 평균 약 ${money(portfolio.annualDividend / 12)}`, portfolio.dividendYield != null ? `배당수익률 ${formatPercent(portfolio.dividendYield)}` : null],
+    subs: [
+      `월 평균 약 ${money(portfolio.annualDividend / 12)}`,
+      portfolio.dividendYield != null ? `배당수익률 ${formatPercent(portfolio.dividendYield)}` : null,
+      dividendBasis(portfolio),
+    ],
     link: { href: '#holdings', text: '보유 종목 보기' },
   });
 }
@@ -305,7 +314,7 @@ export function render(root, { getState, updateState, subscribe }) {
   function currentValues() {
     const state = getState();
     const market = getMarket(state);
-    const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
+    const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate, dividends: market.dividends });
     const cash = cashInKRW(state.cash, market.fx.rate);
     // 공제회·예적금은 기준일 금액에서 납입·이자를 더한 오늘 추정 금액
     const summary = assetSummary({

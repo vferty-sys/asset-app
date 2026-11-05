@@ -217,6 +217,13 @@ select.input {
   box-shadow: var(--focus);
 }
 
+/* 자동으로 채운 값 (직접 고치지 않는 칸, 예: 작년 배당금) */
+.input.is-auto {
+  border-style: dashed;
+  background: var(--surface-2);
+  color: var(--text-muted);
+}
+
 .input::placeholder {
   color: var(--text-muted);
   opacity: 0.7;

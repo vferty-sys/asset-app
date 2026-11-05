@@ -1,6 +1,7 @@
 // 보유 종목 탭: 요약, 경고, 종목 히트맵(칸 크기 = 평가금액, 색 = 수익률) 또는 목록(PC는 표, 모바일은 카드)
 
 import { BROAD_ASSET_CLASSES, ETF_SPREAD_LABELS, STORAGE_PREFIX } from '../constants.js';
+import { dividendBasis } from '../dividends.js';
 import { valuePortfolio } from '../calc/valuation.js';
 import { holdingCountryMix } from '../country-weights.js';
 import { isMixComplete } from '../holding.js';
@@ -42,7 +43,7 @@ const HELP = {
     '지금 모두 판다면 생기는 이익이나 손실이에요. (세금·수수료 제외)',
     '달러 종목은 산 가격과 지금 가격 모두 현재 환율로 바꿔 계산해요. 환율이 올라 생긴 이익은 빠져 있어요.',
   ],
-  dividend: '종목마다 입력한 "연간 주당 배당금 × 수량"을 더한 값이에요. 실제 배당금은 회사 사정에 따라 달라질 수 있어요.',
+  dividend: '종목마다 "1주당 연 배당금 × 수량"을 더한 올해 예상 배당금이에요. 1주당 연 배당금은 작년 1년 동안 실제 배당 합계를 시트가 자동으로 받아 와요. 직접 적은 종목은 그 값을 써요. 실제 배당금은 회사 사정에 따라 달라질 수 있어요.',
 };
 
 function quantityText(holding) {
@@ -167,7 +168,7 @@ export function render(root, { getState, updateState, subscribe }) {
       return;
     }
 
-    const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate });
+    const portfolio = valuePortfolio(state.holdings, { prices: market.prices, fxRate: market.fx.rate, dividends: market.dividends });
     const issues = findPriceIssues(state.holdings, market);
     const rows = [...portfolio.rows].sort(byValueDesc);
     const pnlText = (row) => (row.pnlKRW == null
@@ -189,7 +190,9 @@ export function render(root, { getState, updateState, subscribe }) {
         label: '예상 연 배당금',
         help: HELP.dividend,
         value: money(portfolio.annualDividend),
-        sub: portfolio.annualDividend > 0 ? `월 평균 약 ${money(portfolio.annualDividend / 12)}` : '주당 배당금을 입력하면 계산해요',
+        sub: portfolio.annualDividend > 0
+          ? [`월 평균 약 ${money(portfolio.annualDividend / 12)}`, dividendBasis(portfolio)].filter(Boolean).join(' · ')
+          : market.mode === 'sheet' ? '작년에 배당을 받은 종목이 없어요' : '시트를 연결하면 작년 배당금을 자동으로 넣어요',
       }),
       market.mode === 'sheet'
         ? el('p', {

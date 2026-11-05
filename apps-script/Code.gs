@@ -6,8 +6,10 @@
  * (수량·평단가·금액은 보내지 않아요) 그래서 티커를 직접 적지 않아도 돼요.
  * 시트에는 티커와 시세만 두세요. 수량·평단가·금액 같은 개인 정보는 절대 적지 마세요.
  * 기기 연동을 켜면 앱이 '연동 비밀번호'로 암호화한 자산 데이터를 숨긴 탭('앱 데이터')에 저장합니다 (아래 '기기 연동').
- * 아파트 실거래가(선택): 공공데이터포털 인증키를 스크립트 속성에 넣으면 집값을 최근 실거래가 평균으로 받아요 (맨 아래).
- * 이 코드는 어떤 정보도 다른 곳으로 보내지 않습니다.
+ * 아파트 실거래가(선택): 공공데이터포털 인증키를 스크립트 속성에 넣으면 집값을 최근 실거래가 평균으로 받아요 (아래).
+ * 작년 배당금: 앱이 보낸 티커의 작년 1년 주당 배당금을 야후 파이낸스 공개 차트 자료에서 받아요 (맨 아래).
+ * 바깥으로 보내는 것은 실거래가 조회용 시·군·구 코드(공공데이터포털)와 배당금 조회용 티커(야후 파이낸스)뿐이에요.
+ * 수량·금액 같은 자산 정보는 어디로도 보내지 않습니다.
  *
  * ── 시트 구조 ('시세' 탭, 없으면 첫 번째 탭 / 1행은 제목 줄) ───────────────
  *
@@ -53,7 +55,7 @@
  *    },
  *    "errors": ["KRX:123456"],     ← 가격을 받지 못한 티커 (#N/A 등)
  *    "added": ["NYSE:KO"],         ← 이번 요청에서 시트에 새로 넣은 티커 (가격은 잠시 뒤에 들어올 수 있어요)
- *    "features": ["add-tickers"]   ← 이 코드가 할 수 있는 일 (앱이 코드 버전을 알아보는 데 써요)
+ *    "features": ["add-tickers", "dividends", …]   ← 이 코드가 할 수 있는 일 (앱이 코드 버전을 알아보는 데 써요)
  *  }
  */
 
@@ -61,7 +63,7 @@ const SHEET_NAME = '시세';
 const HEADER_ROWS = 1;
 const CURRENCY_PREFIX = 'CURRENCY:';
 const HEADER = ['티커', '가격', '통화'];
-const FEATURES = ['add-tickers', 'apt-trades', 'apt-areas'];
+const FEATURES = ['add-tickers', 'apt-trades', 'apt-areas', 'dividends'];
 // 티커 자동 추가: 거래소:종목코드 모양만 (예: KRX:005930, KRX:0085P0, NYSE:BRK.B, CURRENCY:USDKRW)
 const ADD_TICKER_PATTERN = /^[A-Z][A-Z0-9]{0,14}:[A-Z0-9][A-Z0-9.\-]{0,19}$/;
 const MAX_ADD_TICKERS = 150;
@@ -85,6 +87,8 @@ function doGet(e) {
       result = aptComplexes_(params);
     } else if (params.action === 'apt-price') {
       result = aptPrice_(params);
+    } else if (params.action === 'dividends') {
+      result = dividends_(params);
     } else {
       const added = params.tickers ? addTickers_(params.tickers) : [];
       if (added.length > 0) {
@@ -706,6 +710,149 @@ function checkRealEstateKey() {
       ? '시트 코드에 "외부 서비스에 연결" 권한이 없어요. 다시 실행해서 권한 화면이 뜨면 "모두 선택"을 체크하고 허용해 주세요.'
       : messages[error.aptError] || '실거래가를 받지 못했어요.';
     Logger.log(`${message} (${text})`);
+  }
+}
+
+// ── 작년 배당금 ─────────────────────────────────────────────
+// 앱이 보낸 티커의 작년(1~12월) 1주당 배당금 합계를 야후 파이낸스 공개 차트 자료에서 받아 돌려준다.
+// 앱은 이 값을 올해 예상 배당금으로 써요. (구글 금융 함수는 배당금을 알려 주지 않아요)
+//  ?action=dividends&tickers=KRX:005930,NASDAQ:QQQ
+//  → { year: 2025, dividends: { "KRX:005930": { perShare: 1444, count: 4, currency: "KRW" }, … },
+//      unsupported: [...], failed: [...] }
+//  - 작년에 배당이 없었던 종목은 perShare: 0, count: 0
+//  - unsupported: 국내(KRX·KOSDAQ)·미국 거래소가 아닌 티커 / failed: 이번에 받지 못한 티커 (잠시 뒤 다시)
+//  - 받은 값은 스크립트 속성에 저장해 두고 다시 받지 않아요. 3월까지는 국내 결산 배당이 늦게 정해지기도 해서 일주일마다 새로 받아요.
+const DIVIDEND_MAX_TICKERS = 40;
+const DIVIDEND_CHUNK = 8; // 한꺼번에 많이 물으면 야후가 거절해서 몇 개씩 나눠 묻는다
+const DIVIDEND_CHUNK_WAIT_MS = 400;
+const DIVIDEND_REFRESH_MS = 7 * 24 * 60 * 60 * 1000;
+const DIVIDEND_FAIL_SECONDS = 6 * 60 * 60;
+const DIVIDEND_HOSTS = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
+const US_EXCHANGES = ['NASDAQ', 'NYSE', 'NYSEARCA', 'NYSEAMERICAN', 'NYSEMKT', 'AMEX', 'BATS', 'CBOE'];
+
+// 앱의 티커 → 야후 파이낸스 심볼 (모르는 거래소면 null)
+//  KRX:005930 → 005930.KS, KOSDAQ:247540 → 247540.KQ, NYSE:BRK.B → BRK-B, NASDAQ:QQQ → QQQ
+function yahooSymbol_(ticker) {
+  const match = /^([A-Z]+):([A-Z0-9][A-Z0-9.\-]*)$/.exec(String(ticker || '').trim().toUpperCase());
+  if (!match) return null;
+  const exchange = match[1];
+  const code = match[2];
+  if (exchange === 'KRX') return /^[0-9A-Z]{6}$/.test(code) ? code + '.KS' : null;
+  if (exchange === 'KOSDAQ') return /^[0-9A-Z]{6}$/.test(code) ? code + '.KQ' : null;
+  if (US_EXCHANGES.indexOf(exchange) >= 0) return code.replace(/\./g, '-');
+  return null;
+}
+
+// 야후 차트 응답에서 그해 배당을 더한다 → { perShare, count, currency } 또는 { error }
+function parseDividendChart_(text, year) {
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch (error) {
+    return { error: 'format' };
+  }
+  const chart = json && json.chart;
+  const result = chart && chart.result && chart.result[0];
+  if (!result) return { error: chart && chart.error && /not found/i.test(String(chart.error.code || chart.error.description || '')) ? 'not-found' : 'format' };
+  const events = (result.events && result.events.dividends) || {};
+  let perShare = 0;
+  let count = 0;
+  Object.keys(events).forEach((key) => {
+    const event = events[key];
+    const amount = Number(event && event.amount);
+    const when = new Date(Number(event && event.date) * 1000);
+    if (!(amount > 0) || when.getUTCFullYear() !== year) return;
+    perShare += amount;
+    count += 1;
+  });
+  return { perShare: Math.round(perShare * 10000) / 10000, count, currency: String((result.meta && result.meta.currency) || '') };
+}
+
+function dividendKey_(year, ticker) {
+  return 'div:' + year + ':' + ticker;
+}
+
+// 저장해 둔 배당금 (새로 받을 때가 지났으면 null)
+function storedDividend_(props, year, ticker, now) {
+  try {
+    const saved = JSON.parse(props.getProperty(dividendKey_(year, ticker)) || 'null');
+    if (!saved || typeof saved.p !== 'number') return null;
+    const settled = now.getMonth() >= 3; // 4월부터는 작년 배당이 다 정해졌다고 본다
+    if (!settled && now.getTime() - Number(saved.t || 0) > DIVIDEND_REFRESH_MS) return null;
+    return { perShare: saved.p, count: saved.n || 0, currency: saved.c || '' };
+  } catch (error) {
+    return null;
+  }
+}
+
+function dividends_(params, now) {
+  const today = now || new Date();
+  const year = today.getFullYear() - 1;
+  const tickers = String(params.tickers || '').split(',').map((ticker) => ticker.trim().toUpperCase())
+    .filter((ticker, index, list) => ticker && list.indexOf(ticker) === index).slice(0, DIVIDEND_MAX_TICKERS);
+  const props = PropertiesService.getScriptProperties();
+  const cache = CacheService.getScriptCache();
+  const result = { year, dividends: {}, unsupported: [], failed: [] };
+  const missing = [];
+  tickers.forEach((ticker) => {
+    const symbol = yahooSymbol_(ticker);
+    if (!symbol) {
+      result.unsupported.push(ticker);
+      return;
+    }
+    const saved = storedDividend_(props, year, ticker, today);
+    if (saved) result.dividends[ticker] = saved;
+    else if (cache.get('divfail:' + year + ':' + ticker)) result.failed.push(ticker);
+    else missing.push({ ticker, symbol });
+  });
+  // 1월 1일 0시 ~ 12월 31일 (앞뒤로 며칠 넉넉히 받고, 날짜로 다시 거른다)
+  const from = Math.floor(Date.UTC(year, 0, 1) / 1000) - 5 * 86400;
+  const to = Math.floor(Date.UTC(year + 1, 0, 1) / 1000) + 5 * 86400;
+  const url = (host, symbol) => host + '/v8/finance/chart/' + encodeURIComponent(symbol) + '?period1=' + from + '&period2=' + to + '&interval=1mo&events=div';
+  for (let start = 0; start < missing.length; start += DIVIDEND_CHUNK) {
+    if (start > 0) Utilities.sleep(DIVIDEND_CHUNK_WAIT_MS);
+    let pending = missing.slice(start, start + DIVIDEND_CHUNK);
+    for (let h = 0; h < DIVIDEND_HOSTS.length && pending.length > 0; h += 1) {
+      const responses = UrlFetchApp.fetchAll(pending.map((entry) => ({
+        url: url(DIVIDEND_HOSTS[h], entry.symbol), muteHttpExceptions: true, headers: { 'User-Agent': 'Mozilla/5.0' },
+      })));
+      const retry = [];
+      pending.forEach((entry, index) => {
+        const response = responses[index];
+        const status = response.getResponseCode();
+        const parsed = status === 200 ? parseDividendChart_(response.getContentText(), year) : { error: status === 404 ? 'not-found' : 'http' };
+        if (!parsed.error) {
+          result.dividends[entry.ticker] = parsed;
+          props.setProperty(dividendKey_(year, entry.ticker), JSON.stringify({ p: parsed.perShare, n: parsed.count, c: parsed.currency, t: today.getTime() }));
+        } else if (parsed.error === 'not-found' || h === DIVIDEND_HOSTS.length - 1) {
+          result.failed.push(entry.ticker);
+          cache.put('divfail:' + year + ':' + entry.ticker, '1', DIVIDEND_FAIL_SECONDS);
+        } else {
+          retry.push(entry); // 다른 주소로 한 번 더
+        }
+      });
+      pending = retry;
+    }
+  }
+  return result;
+}
+
+// 편집기에서 한 번 실행해 볼 수 있어요: SCHD와 삼성전자의 작년 배당금을 받아 실행 로그에 적어요.
+function checkDividends() {
+  requireAllScopes_();
+  try {
+    const result = dividends_({ tickers: 'NYSEARCA:SCHD,KRX:005930' });
+    const lines = Object.keys(result.dividends).map((ticker) => {
+      const info = result.dividends[ticker];
+      return ticker + ' 주당 ' + info.perShare + ' ' + info.currency + ' (' + info.count + '번)';
+    });
+    if (lines.length > 0) Logger.log('작년(' + result.year + '년) 배당금을 잘 받았어요. ' + lines.join(' · '));
+    if (result.failed.length > 0) Logger.log('받지 못한 티커: ' + result.failed.join(', ') + ' — 잠시 뒤(6시간쯤) 다시 해 보세요.');
+  } catch (error) {
+    const text = safeMessage_(error && error.message);
+    Logger.log(/external_request|UrlFetchApp/.test(text)
+      ? '시트 코드에 "외부 서비스에 연결" 권한이 없어요. 다시 실행해서 권한 화면이 뜨면 "모두 선택"을 체크하고 허용해 주세요. (' + text + ')'
+      : '배당금을 받지 못했어요. (' + text + ')');
   }
 }
 

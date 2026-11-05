@@ -83,6 +83,8 @@ const STORED_FIELDS = {
   account: { type: 'enum', options: ACCOUNTS, default: '일반' },
   assetClass: { type: 'enum', options: ASSET_CLASSES, default: '기타' },
   dividendPerShare: { type: 'number', nullable: true, min: 0, default: null },
+  // 켜면 시트가 받은 작년 배당금 대신 dividendPerShare(직접 적은 값)를 쓴다
+  dividendManual: { type: 'boolean', default: false },
   etfSpread: { type: 'enum', options: ETF_SPREADS, nullable: true, default: null },
   memo: { type: 'string', default: '' },
 };
@@ -121,6 +123,7 @@ export function normalizeHolding(raw) {
     countryPreset: presetFor(fields.type, source.countryPreset),
     sectorMix: cleanMix(source.sectorMix),
     dividendPerShare: fields.dividendPerShare,
+    dividendManual: fields.dividendManual,
     memo: fields.memo,
   };
 }
@@ -198,6 +201,7 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
   take('avgPrice', { type: 'number', min: 0 });
   take('manualPrice', { type: 'number', nullable: true, exclusiveMin: 0 });
   take('dividendPerShare', { type: 'number', nullable: true, min: 0 });
+  fields.dividendManual = input.dividendManual === true || input.dividendManual === 'true';
   take('memo', { type: 'string', maxLength: 200 });
 
   if (fields.quantity != null && !Number.isInteger(fields.quantity)) {
@@ -249,6 +253,7 @@ export function validateHolding(input, { allowFractionalUS = false, existing = [
       countryPreset,
       sectorMix: fields.sectorMix,
       dividendPerShare: fields.dividendPerShare,
+      dividendManual: fields.dividendManual,
       memo: fields.memo,
     },
   };
@@ -273,6 +278,7 @@ export function holdingToInput(holding) {
     countryPreset: holding.countryPreset ?? '',
     sectorRows: mixToRows(holding.sectorMix),
     dividendPerShare: text(holding.dividendPerShare),
+    dividendManual: Boolean(holding.dividendManual),
     memo: holding.memo ?? '',
   };
 }
