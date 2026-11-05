@@ -1,5 +1,6 @@
 // 첫 사용 가이드 (요청서 7장): 시트 연결 → 종목 입력 → 목표 비중 → 확인, 그리고 "샘플 데이터로 둘러보기"
 
+import { MANUAL_PATH } from '../constants.js';
 import { el, openModal } from '../dom.js';
 
 const STEPS = [
@@ -41,6 +42,8 @@ export function openOnboarding({ onSample, onClose }) {
         el('p', { class: 'step-title', text: step.title }),
         el('p', { class: 'step-text', text: step.text }),
         el('a', { class: 'step-link', href: step.href, text: step.link }))))),
+    el('p', { class: 'onboarding-manual' }, '처음이라 어렵다면 함께 펴 놓고 따라 해 보세요: ',
+      el('a', { href: MANUAL_PATH, target: '_blank', rel: 'noopener', text: '그림으로 보는 사용 설명서 (PDF)' })),
     el('p', { class: 'onboarding-note', text: '입력한 내용은 이 기기의 브라우저에만 저장되고 어디로도 보내지 않아요. 여러 사람이 쓰는 컴퓨터라면 다 쓴 뒤 설정 → 내 데이터에서 "이 기기에서 데이터 삭제"를 눌러 주세요.' }));
 
   const { close } = openModal({

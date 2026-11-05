@@ -62,6 +62,7 @@ data/stocks.json    종목 목록 (국내 주식·ETF, 미국 상장 주식 전�
 scripts/            종목 목록을 만드는 스크립트 (npm run build:stocks)
 .github/workflows/  매달 종목 목록을 새로 만드는 GitHub Actions
 docs/               가이드 문서 (앱 안 '시트 연결 가이드' 화면에도 그대로 보임)
+docs/user-manual.pdf 그림으로 보는 사용 설명서 (처음 안내 창과 설정 → 내 데이터 → 둘러보기에서 열림)
 tests/              단위 테스트
 .nojekyll           GitHub Pages가 파일을 그대로 올리도록 (가이드 .md를 앱에서 읽기 위해 필요)
 ```

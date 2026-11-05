@@ -2119,6 +2119,14 @@
   font-weight: 600;
 }
 
+.onboarding-manual {
+  font-size: 0.9375rem;
+}
+
+.onboarding-manual a {
+  font-weight: 700;
+}
+
 .onboarding-note {
   padding: 10px 12px;
   border-radius: 10px;

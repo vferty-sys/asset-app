@@ -7,6 +7,7 @@ import { createSampleData } from '../sample-data.js';
 import { todayString } from '../dates.js';
 import { canPromptInstall, isStandalone, promptInstall, subscribeInstall } from '../install.js';
 import { el, closeAllModals, confirmDialog, openModal, showToast, uid } from '../dom.js';
+import { MANUAL_PATH } from '../constants.js';
 import { formatDate } from '../format.js';
 import { openOnboarding } from './onboarding.js';
 
@@ -283,7 +284,9 @@ export function dataSection({ getState, updateState, navigate, sync }) {
       el('h3', { class: 'data-title', text: '둘러보기' }),
       el('div', { class: 'toolbar' },
         el('button', { type: 'button', class: 'btn', text: '사용 가이드 다시 보기', onClick: () => openGuide({ getState, updateState, navigate }) }),
-        el('button', { type: 'button', class: 'btn', text: '샘플 데이터 불러오기', onClick: () => loadSample({ getState, navigate, sync }) }))),
+        el('a', { class: 'btn', href: MANUAL_PATH, target: '_blank', rel: 'noopener', text: '사용 설명서 (PDF)' }),
+        el('button', { type: 'button', class: 'btn', text: '샘플 데이터 불러오기', onClick: () => loadSample({ getState, navigate, sync }) })),
+      el('p', { class: 'muted small', text: '사용 설명서는 실제 화면에 번호를 붙여 순서대로 설명한 22쪽짜리 PDF예요. 새 창에서 열려요.' })),
     el('div', { class: 'data-block danger-zone' },
       el('h3', { class: 'data-title', text: '데이터 지우기' }),
       el('p', { text: '여러 사람이 쓰는 컴퓨터(회사·학교·PC방 등)에서는 다 쓴 뒤 "이 기기에서 데이터 삭제"를 눌러 주세요. 데이터가 이 브라우저에 남아 있어서, 다음 사람이 이 주소를 열면 볼 수 있어요. 기기 연동 중이면 시트와 다른 기기의 데이터는 그대로예요.' }),

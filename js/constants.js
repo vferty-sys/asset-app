@@ -5,6 +5,9 @@ import { GLOBAL_COUNTRY } from './country-weights.js';
 
 export const APP_NAME = '내 자산 한눈에';
 
+// 그림으로 보는 사용 설명서 (A4 PDF). 처음 안내 창과 설정 → 내 데이터 → 둘러보기에서 연다.
+export const MANUAL_PATH = './docs/user-manual.pdf';
+
 // 같은 github.io 주소의 다른 앱과 겹치지 않도록 모든 키에 접두어를 붙인다.
 export const STORAGE_PREFIX = 'assetApp.';
 export const STORAGE_KEYS = Object.freeze({
