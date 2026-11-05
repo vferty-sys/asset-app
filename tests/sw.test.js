@@ -46,6 +46,14 @@ test('서비스 워커의 앱 파일 목록 = 실제 앱 파일 (css·js 전부,
   assert.ok(appFilesInServiceWorker().includes('./'), '앱 첫 화면(./)도 저장해야 함');
 });
 
+test('사용 설명서 PDF: 앱이 여는 경로에 진짜 PDF가 있다 (용량이 커서 미리 저장 목록에는 넣지 않음)', () => {
+  const manualPath = /MANUAL_PATH = '\.\/([^']+)'/.exec(read('js/constants.js'))[1];
+  const bytes = readFileSync(join(ROOT, manualPath));
+  assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+  assert.ok(bytes.length < 20 * 1024 * 1024, '20MB보다 작게');
+  assert.ok(!appFilesInServiceWorker().includes(`./${manualPath}`));
+});
+
 test('서비스 워커: 캐시 버전이 있고, 구글 시트 등 다른 주소 요청은 건드리지 않는다', () => {
   const source = read('sw.js');
   assert.match(source, /const CACHE_VERSION = 'v\d+';/);
