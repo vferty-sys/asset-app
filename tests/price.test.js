@@ -36,6 +36,7 @@ test('요청서 4-2 형식의 응답을 읽는다', () => {
     aptTrades: false,
     aptKey: false,
     aptAreas: false,
+    dividendFeature: false,
   });
 });
 

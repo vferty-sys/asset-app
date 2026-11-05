@@ -42,6 +42,7 @@ test('정상 입력은 저장할 종목 객체가 된다', () => {
     countryPreset: null,
     sectorMix: { 기술: 100 },
     dividendPerShare: null,
+    dividendManual: false,
     memo: '',
   });
 });
@@ -128,7 +129,7 @@ test('normalizeHolding: 저장 데이터의 틀린 값은 기본값으로, 비�
   assert.deepEqual(holding, {
     id: 'x1', name: '테스트', ticker: 'NASDAQ:QQQ', type: 'stock', etfSpread: null, currency: 'USD', quantity: 0,
     avgPrice: 100, manualPrice: null, account: '일반', assetClass: '성장주',
-    countryMix: { 미국: 100 }, countryPreset: null, sectorMix: {}, dividendPerShare: null, memo: '',
+    countryMix: { 미국: 100 }, countryPreset: null, sectorMix: {}, dividendPerShare: null, dividendManual: false, memo: '',
   });
   assert.match(normalizeHolding({}).id, /^h_/);
 });

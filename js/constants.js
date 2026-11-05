@@ -13,6 +13,7 @@ export const STORAGE_PREFIX = 'assetApp.';
 export const STORAGE_KEYS = Object.freeze({
   data: `${STORAGE_PREFIX}data`,
   priceCache: `${STORAGE_PREFIX}priceCache`,
+  dividendCache: `${STORAGE_PREFIX}dividendCache`,
 });
 
 export const ACCOUNTS = Object.freeze(['일반', 'ISA', '연금저축', 'IRP', '기타']);

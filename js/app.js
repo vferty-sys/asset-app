@@ -7,7 +7,7 @@ import {
   initState, reloadState, getState, updateState, replaceState, subscribe, switchBackend, isPersistEnabled,
 } from './state.js';
 import { createSyncEngine, dataStorageFor, readSyncConfig } from './sync.js';
-import { getMarket, initMarket, lastFetchedAt, refreshPrices, resetPriceStatus } from './market.js';
+import { getMarket, initMarket, lastFetchedAt, refreshDividends, refreshPrices, resetPriceStatus } from './market.js';
 import { sheetTickers, unknownSheetTickers } from './price.js';
 import { fetchAptPrice } from './apt-price.js';
 import { initInstall } from './install.js';
@@ -123,8 +123,11 @@ async function updatePrices(sheetUrl, { quiet = false } = {}) {
   const result = await refreshPrices(sheetUrl, { tickers: sheetTickers(getState().holdings) });
   if (result.error && !quiet) showToast(`새 시세를 받지 못했어요. ${result.error.message}`, 'danger', 5000);
   else if (result.added?.length > 0) showToast(`시트에 새 종목 ${result.added.length}개를 넣었어요. 가격은 몇 초 뒤에 들어와요.`);
-  // 시세를 받은 뒤, 일주일이 지난 아파트 실거래가도 새로 받는다
-  if (result.ok) refreshApartmentPrices();
+  // 시세를 받은 뒤, 일주일이 지난 아파트 실거래가와 아직 모르는(또는 일주일 지난) 작년 배당금도 새로 받는다
+  if (result.ok) {
+    refreshApartmentPrices();
+    if (getMarket(getState()).dividendFeature) refreshDividends(sheetUrl, getState().holdings);
+  }
 }
 
 function watchPrices() {

@@ -8,9 +8,11 @@ import { COUNTRY_PRESETS, COUNTRY_WEIGHTS, GLOBAL_COUNTRY, presetMix } from '../
 import { guessEtfSpread, guessFromTicker, holdingToInput, normalizeTicker, validateHolding } from '../holding.js';
 import { findByTicker, loadStockList } from '../stock-list.js';
 import { parseNumberInput } from '../validate.js';
+import { isDividendTicker } from '../dividends.js';
+import { getMarket, lookupDividend } from '../market.js';
 import { el, clear, closeIcon, confirmDialog, openModal, showToast, uid } from '../dom.js';
-import { createField, numberInput, segmented, selectInput, textInput } from './form.js';
-import { josa } from '../format.js';
+import { createField, createToggleField, numberInput, segmented, selectInput, textInput } from './form.js';
+import { formatNumber, formatPrice, josa } from '../format.js';
 import { attachStockPicker } from './stock-picker.js';
 
 const TYPE_OPTIONS = [['stock', '개별 주식'], ['etf', 'ETF']];
@@ -41,7 +43,10 @@ const HELP = {
     '미분류: 비중표에 없는 다국가 ETF. 글로벌(다국가)로 모아 계산해요',
   ],
   sector: '섹터는 기술·금융·소비재처럼 회사가 하는 일의 분야예요.',
-  dividend: '1년 동안 1주당 받는 배당금 합계예요. 모르면 비워 두세요.',
+  dividend: [
+    '1년 동안 1주당 받는 배당금 합계예요. 올해 예상 배당금을 계산할 때 써요.',
+    '구글 시트를 연결하면 작년 1년(1~12월) 동안 실제로 받은 배당을 더해 자동으로 넣어요. 다른 값을 쓰고 싶으면 "배당금 직접 적기"를 켜세요.',
+  ],
   spread: [
     'ETF가 회사들을 얼마나 넓게 담았는지예요. 건강도 점수와 쏠림 경고에서 ETF 하나를 몇 종목으로 볼지 정해요.',
     '시장 전체형: S&P500·코스피200·나스닥100·전세계 주식처럼 시장 전체를 담은 ETF (10종목으로 봐요)',
@@ -352,6 +357,7 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
     onChange: (currency) => {
       currencyTouched = true;
       applyCurrency(currency);
+      refreshDividend();
     },
   });
   const currencyField = createField({ label: '통화', control: currencyControl.element, group: true });
@@ -373,7 +379,8 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
   });
 
   const manualPriceField = createField({ label: '현재가 (선택)', help: HELP.manualPrice, control: numberInput({ value: input.manualPrice }), suffix: '원', preview: false });
-  const dividendField = createField({ label: '연간 주당 배당금 (선택)', help: HELP.dividend, control: numberInput({ value: input.dividendPerShare }), suffix: '원', preview: false });
+  const dividendField = createField({ label: '연간 주당 배당금', help: HELP.dividend, control: numberInput({ value: input.dividendPerShare }), suffix: '원', preview: false });
+  const dividendManualToggle = createToggleField({ label: '배당금 직접 적기', checked: Boolean(input.dividendManual) });
   const memoField = createField({ label: '메모 (선택)', control: el('textarea', { class: 'input textarea', rows: '2', maxlength: '200', value: input.memo }) });
 
   function applyCurrency(currency) {
@@ -413,6 +420,70 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
   }
   [nameField.control, tickerInput, assetClassField.control].forEach((control) => control.addEventListener('change', refreshSpread));
   refreshSpread();
+
+  // ── 작년 배당금 자동 ──
+  //  시트를 연결했고 시트 코드가 배당금을 알려 주면, 고른 종목의 작년 1년 배당 합계를 받아 칸에 넣는다(직접 고칠 수 없게).
+  //  "배당금 직접 적기"를 켜면 적은 값을 쓴다. 자동으로 못 받으면 적은 값(예전에 적어 둔 값)을 쓴다.
+  const sheetUrl = getState().settings.sheetUrl;
+  const sheetMarket = getMarket(getState());
+  let dividend = { state: 'idle' }; // idle | loading | ok | off(못 씀, message)
+  let dividendTicker = null;
+  let typedDividend = dividendField.control.value; // 직접 적기를 켰다 껐다 해도 적은 값이 남게
+  function dividendOff(message) {
+    dividend = { state: 'off', message };
+    refreshDividend();
+  }
+  async function loadDividend() {
+    const ticker = normalizeTicker(tickerInput.value);
+    if (ticker === dividendTicker) {
+      refreshDividend(); // 같은 종목이어도 통화가 바뀌었을 수 있다
+      return undefined;
+    }
+    dividendTicker = ticker;
+    if (!ticker) return dividendOff('');
+    if (!sheetUrl) return dividendOff('구글 시트를 연결하면 작년 배당금을 자동으로 넣어요. 지금은 적은 값을 써요.');
+    if (!sheetMarket.dividendFeature) return dividendOff('시트 코드를 최신으로 바꾸면 작년 배당금을 자동으로 넣어요. 지금은 적은 값을 써요.');
+    if (!isDividendTicker(ticker)) return dividendOff('이 거래소 종목은 배당금을 자동으로 받지 못해요. 알면 직접 적어 주세요.');
+    dividend = { state: 'loading' };
+    refreshDividend();
+    try {
+      const info = await lookupDividend(sheetUrl, ticker);
+      if (dividendTicker !== ticker) return undefined; // 그사이 다른 종목을 골랐다
+      if (!info) return dividendOff('작년 배당 자료를 찾지 못했어요. 알면 직접 적어 주세요.');
+      dividend = { state: 'ok', info };
+    } catch (error) {
+      if (dividendTicker !== ticker) return undefined;
+      return dividendOff(`${error.message ?? '배당금을 받지 못했어요.'} 지금은 적은 값을 써요.`);
+    }
+    refreshDividend();
+    return undefined;
+  }
+  // 자동 값을 쓸 수 있는지 (통화가 다르면 쓰지 않는다)
+  const autoDividend = () => (dividend.state === 'ok' && (!dividend.info.currency || dividend.info.currency === currencyControl.value) ? dividend.info : null);
+  function refreshDividend() {
+    const manual = dividendManualToggle.control.checked;
+    const auto = autoDividend();
+    const control = dividendField.control;
+    const locked = !manual && (Boolean(auto) || dividend.state === 'loading');
+    if (locked && !control.readOnly) typedDividend = control.value;
+    control.readOnly = locked;
+    control.classList.toggle('is-auto', locked);
+    if (!manual && auto) control.value = formatNumber(auto.perShare, { maximumFractionDigits: 8 });
+    else if (!locked && control.dataset.auto === '1') control.value = typedDividend;
+    control.dataset.auto = !manual && auto ? '1' : '';
+    let hint = '';
+    if (manual) hint = '직접 적은 값을 써요. 끄면 작년 배당 합계를 자동으로 써요.';
+    else if (dividend.state === 'loading') hint = '작년 배당금을 받는 중이에요…';
+    else if (auto) {
+      hint = auto.count > 0
+        ? `작년(${auto.year}년) ${auto.count}번 받은 배당을 더했어요: 1주당 ${formatPrice(auto.perShare, currencyControl.value)}. 올해 예상 배당금으로 써요.`
+        : `작년(${auto.year}년)에는 배당이 없었어요.`;
+    } else if (dividend.state === 'ok') hint = `배당 자료의 통화(${dividend.info.currency})가 이 종목과 달라서 자동으로 쓰지 않아요. 알면 직접 적어 주세요.`;
+    else hint = dividend.message ?? '';
+    dividendField.setHint(hint);
+  }
+  dividendManualToggle.control.addEventListener('change', refreshDividend);
+  tickerInput.addEventListener('change', () => { loadDividend(); });
 
   // ── 종목 목록에서 고르면 티커·종류·통화·국가·섹터·자산군·분산 정도를 한 번에 채운다 ──
   let stockItems = [];
@@ -457,6 +528,7 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
       } else notes.push(`${filled.join(', ')}. 맞는지 확인해 주세요.`);
     }
     nameField.setHint(notes.join(' '));
+    loadDividend();
   }
   // ── 국가·섹터·자산군을 자동으로 못 채운 경우: 빈 칸만 거래소·이름으로 짐작해 채운다 ──
   //  국가: 거래소(KRX → 한국, 미국 거래소 → 미국) / ETF는 이름. 모르면 개별 주식은 '기타', ETF는 '미분류'(글로벌)
@@ -575,7 +647,9 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
     countryEditor.element,
     sectorEditor.element,
     el('div', { class: 'form-pair' }, manualPriceField.element, dividendField.element),
+    dividendManualToggle.element,
     memoField.element);
+  loadDividend();
 
   const deleteButton = isEdit ? el('button', { type: 'button', class: 'btn btn-danger', text: '삭제' }) : null;
   const cancelButton = el('button', { type: 'button', class: 'btn', text: '취소' });
@@ -605,7 +679,9 @@ export function openHoldingForm({ holding = null, prefill = null, getState, upda
       assetClass: assetClassField.control.value,
       ...countryEditor.getValue(),
       sectorRows: sectorEditor.getRows(),
+      // 자동 값을 쓰는 중이면 그 값을 함께 적어 둔다 (나중에 자동으로 못 받을 때 쓰도록)
       dividendPerShare: dividendField.control.value,
+      dividendManual: dividendManualToggle.control.checked,
       memo: memoField.control.value,
     }, { allowFractionalUS: state.settings.allowFractionalUS, existing: state.holdings });
 
