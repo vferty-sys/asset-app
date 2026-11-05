@@ -317,12 +317,14 @@ export function syncSection({ getState, subscribe, sync, downloadBackup }) {
     if (!config) {
       const button = el('button', { type: 'button', class: 'btn btn-primary', text: '연동 켜기', disabled: !url });
       button.addEventListener('click', () => startSync({ sync, getState, url, report }));
-      body.replaceChildren(
+      // replaceChildren은 null을 "null" 글자로 넣으므로 빈 칸은 빼고 넣는다
+      body.replaceChildren(...[
         el('p', { text: '노트북·회사 PC처럼 여러 기기에서 같은 데이터를 고치고 볼 수 있어요. 데이터는 연동 비밀번호로 잠가서, 시세에 쓰는 내 구글 시트에 저장해요.' }),
         url ? null : el('p', { class: 'banner banner-info', text: '먼저 위 "시세 연결"에 내 구글 시트 웹 앱 주소를 넣어 주세요. 연동도 같은 주소를 써요.' }),
         el('div', { class: 'toolbar' }, button),
         result.node,
-        el('p', { class: 'muted small', text: `시트 코드(Code.gs)를 새 버전으로 바꾸고 다시 배포해야 쓸 수 있어요 (연결 가이드 참고). ${FORGET_WARNING}` }));
+        el('p', { class: 'muted small', text: `시트 코드(Code.gs)를 새 버전으로 바꾸고 다시 배포해야 쓸 수 있어요 (연결 가이드 참고). ${FORGET_WARNING}` }),
+      ].filter(Boolean));
       return;
     }
     const [badge, label] = STATUS_TEXT[status.state] ?? STATUS_TEXT.error;
